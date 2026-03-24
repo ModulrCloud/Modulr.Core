@@ -196,6 +196,42 @@ The focus is on:
 
 ---
 
+## Development
+
+Python **3.11+** required.
+
+**Use a virtual environment** so dependencies stay isolated from your system Python. Create it once per clone (the `.venv` folder is gitignored and is not part of the repo).
+
+**Windows (PowerShell or cmd):**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+```
+
+If PowerShell refuses to run `Activate.ps1`, use **cmd** and run `.venv\Scripts\activate.bat`, or allow scripts for your user once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+**macOS / Linux:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Then run checks from the repo root (with the venv still activated):
+
+```bash
+ruff check src tests
+ruff format --check src tests
+pytest
+```
+
+The importable package is **`modulr_core`**; the protocol module name on the wire remains **`modulr.core`**.
+
+---
+
 ## License
 
 BSL - Business Specific License
