@@ -2,7 +2,8 @@ import re
 
 import modulr_core
 
-_MODULE_VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}\.\d+$")
+# Calendar-style with PEP 440–canonical segments (e.g. 2026.3.22.0, not 2026.03.22.0).
+_MODULE_VERSION_RE = re.compile(r"^\d{4}\.\d+\.\d+\.\d+$")
 
 
 def test_version_strings_present() -> None:
