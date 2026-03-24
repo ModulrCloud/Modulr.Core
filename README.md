@@ -198,7 +198,7 @@ The focus is on:
 
 ## Development
 
-Python **3.11+** required.
+Python **3.11+** required. Runtime dependencies (including **cryptography** for Ed25519) are listed in **`pyproject.toml`**; `pip install -e ".[dev]"` installs them into your venv.
 
 **Use a virtual environment** so dependencies stay isolated from your system Python. Create it once per clone (the `.venv` folder is gitignored and is not part of the repo).
 
