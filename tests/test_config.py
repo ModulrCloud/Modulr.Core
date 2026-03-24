@@ -17,6 +17,7 @@ from modulr_core.config import (
     DEFAULT_REPLAY_WINDOW_SECONDS,
     Settings,
     load_settings,
+    load_settings_from_bytes,
     load_settings_from_str,
 )
 
@@ -89,6 +90,11 @@ def test_missing_modulr_core_table() -> None:
 def test_invalid_toml() -> None:
     with pytest.raises(ConfigurationError, match="invalid TOML"):
         load_settings_from_str("[modulr_core\n")
+
+
+def test_non_utf8_bytes_raise_configuration_error() -> None:
+    with pytest.raises(ConfigurationError, match="not valid UTF-8"):
+        load_settings_from_bytes(b"\xff\xfe\x00", source="<test>")
 
 
 def test_non_empty_bootstrap_required_when_not_dev() -> None:

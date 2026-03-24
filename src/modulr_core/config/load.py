@@ -39,7 +39,13 @@ def load_settings_from_str(toml: str) -> Settings:
 def load_settings_from_bytes(data: bytes, *, source: str) -> Settings:
     """Parse TOML from UTF-8 bytes and return validated :class:`Settings`."""
     try:
-        root = tomllib.loads(data.decode("utf-8"))
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ConfigurationError(
+            f"configuration is not valid UTF-8 ({source}): {e}",
+        ) from e
+    try:
+        root = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ConfigurationError(f"invalid TOML ({source}): {e}") from e
     return _settings_from_root(root, source=source)
