@@ -2,6 +2,7 @@
 
 from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import (
+    ConfigurationError,
     DuplicateMigrationVersionError,
     InvalidHexEncoding,
     InvalidPublicKey,
@@ -11,6 +12,7 @@ from modulr_core.errors.exceptions import (
 __all__ = [
     "ErrorCode",
     "SuccessCode",
+    "ConfigurationError",
     "DuplicateMigrationVersionError",
     "InvalidHexEncoding",
     "InvalidPublicKey",
