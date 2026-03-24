@@ -26,14 +26,16 @@ def verify_ed25519(public_key: bytes, message: bytes, signature: bytes) -> None:
 
     Raises:
         InvalidPublicKey: ``public_key`` is not 32 valid bytes for Ed25519.
-        SignatureInvalid: Signature does not verify.
+        SignatureInvalid: Wrong signature length, or Ed25519 verify failed.
     """
     if len(public_key) != 32:
         raise InvalidPublicKey(
             f"Ed25519 public key must be 32 bytes, got {len(public_key)}"
         )
     if len(signature) != 64:
-        raise ValueError(f"Ed25519 signature must be 64 bytes, got {len(signature)}")
+        raise SignatureInvalid(
+            f"Ed25519 signature must be 64 bytes, got {len(signature)}"
+        )
     try:
         pk = Ed25519PublicKey.from_public_bytes(public_key)
     except ValueError as e:

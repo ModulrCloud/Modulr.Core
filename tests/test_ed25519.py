@@ -80,7 +80,7 @@ def test_verify_signature_wrong_byte_length() -> None:
         encoding=Encoding.Raw,
         format=PublicFormat.Raw,
     )
-    with pytest.raises(ValueError, match="64 bytes"):
+    with pytest.raises(SignatureInvalid, match="64 bytes"):
         verify_ed25519(pub_bytes, b"m", b"\x00" * 63)
 
 
