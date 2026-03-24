@@ -1,6 +1,7 @@
 """Modulr.Core reference implementation (Python package ``modulr_core``)."""
 
 from modulr_core.errors import (
+    DuplicateMigrationVersionError,
     ErrorCode,
     InvalidHexEncoding,
     InvalidPublicKey,
@@ -14,6 +15,7 @@ __all__ = [
     "__version__",
     "ErrorCode",
     "SuccessCode",
+    "DuplicateMigrationVersionError",
     "InvalidHexEncoding",
     "InvalidPublicKey",
     "SignatureInvalid",

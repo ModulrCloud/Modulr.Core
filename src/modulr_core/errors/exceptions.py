@@ -11,3 +11,7 @@ class InvalidPublicKey(ValueError):
 
 class SignatureInvalid(Exception):
     """Ed25519 signature verification failed."""
+
+
+class DuplicateMigrationVersionError(ValueError):
+    """Two migration ``NNN_*.sql`` files use the same numeric prefix."""

@@ -4,7 +4,9 @@ import sqlite3
 
 import pytest
 
+from modulr_core import DuplicateMigrationVersionError
 from modulr_core.persistence import apply_migrations, connect_memory, open_database
+from modulr_core.persistence import migrate as migrate_mod
 from modulr_core.repositories import (
     HeartbeatRepository,
     MessageDedupRepository,
@@ -150,3 +152,15 @@ def test_open_database_file(tmp_path) -> None:
         assert path.exists()
     finally:
         c.close()
+
+
+def test_duplicate_migration_version_raises(tmp_path, monkeypatch) -> None:
+    (tmp_path / "001_first.sql").write_text("SELECT 1;", encoding="utf-8")
+    (tmp_path / "001_second.sql").write_text("SELECT 1;", encoding="utf-8")
+    monkeypatch.setattr(migrate_mod, "migrations_dir", lambda: tmp_path)
+    c = connect_memory()
+    with pytest.raises(
+        DuplicateMigrationVersionError,
+        match="duplicate migration version 1",
+    ):
+        apply_migrations(c)
