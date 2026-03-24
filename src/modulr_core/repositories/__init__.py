@@ -1,0 +1,13 @@
+"""Data access for Modulr.Core MVP tables."""
+
+from modulr_core.repositories.heartbeat import HeartbeatRepository
+from modulr_core.repositories.message_dedup import MessageDedupRepository
+from modulr_core.repositories.modules import ModulesRepository
+from modulr_core.repositories.name_bindings import NameBindingsRepository
+
+__all__ = [
+    "HeartbeatRepository",
+    "MessageDedupRepository",
+    "ModulesRepository",
+    "NameBindingsRepository",
+]
