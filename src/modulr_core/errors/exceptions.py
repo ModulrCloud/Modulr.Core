@@ -1,6 +1,10 @@
 """Exceptions for validation and crypto (mapped to wire ``code`` in higher layers)."""
 
 
+class ConfigurationError(ValueError):
+    """Operator configuration (e.g. TOML) is missing, invalid, or inconsistent."""
+
+
 class InvalidHexEncoding(ValueError):
     """Wire hex is not lowercase or not the expected length for the field."""
 
