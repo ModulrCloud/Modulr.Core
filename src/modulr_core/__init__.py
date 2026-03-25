@@ -8,6 +8,7 @@ from modulr_core.errors import (
     InvalidPublicKey,
     SignatureInvalid,
     SuccessCode,
+    WireValidationError,
 )
 from modulr_core.version import MODULE_VERSION, __version__
 
@@ -21,4 +22,5 @@ __all__ = [
     "InvalidHexEncoding",
     "InvalidPublicKey",
     "SignatureInvalid",
+    "WireValidationError",
 ]

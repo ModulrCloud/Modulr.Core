@@ -7,6 +7,7 @@ from modulr_core.errors.exceptions import (
     InvalidHexEncoding,
     InvalidPublicKey,
     SignatureInvalid,
+    WireValidationError,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "InvalidHexEncoding",
     "InvalidPublicKey",
     "SignatureInvalid",
+    "WireValidationError",
 ]
