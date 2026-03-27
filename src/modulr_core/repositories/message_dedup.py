@@ -35,6 +35,14 @@ class MessageDedupRepository:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def update_result_summary(self, message_id: str, result_summary: str) -> int:
+        """Update stored outcome for idempotent replay (full response JSON)."""
+        cur = self._conn.execute(
+            "UPDATE message_dedup SET result_summary = ? WHERE message_id = ?",
+            (result_summary, message_id),
+        )
+        return cur.rowcount
+
     def delete_older_than(self, cutoff_epoch: int) -> int:
         cur = self._conn.execute(
             "DELETE FROM message_dedup WHERE first_seen_at < ?",

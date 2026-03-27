@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
-from modulr_core import MODULE_VERSION, ErrorCode
+from modulr_core import MODULE_VERSION, ErrorCode, SuccessCode
 from modulr_core.config.schema import Settings
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http import create_app, resolve_config_path
@@ -46,8 +46,11 @@ def _signed_body(
     private_key: Ed25519PrivateKey,
     message_id: str,
     operation: str = "lookup_module",
+    payload: dict[str, Any] | None = None,
 ) -> bytes:
-    payload = {"module_name": "modulr.storage"}
+    payload = (
+        {"module_name": "modulr.storage"} if payload is None else payload
+    )
     pub = private_key.public_key().public_bytes(
         encoding=Encoding.Raw,
         format=PublicFormat.Raw,
@@ -100,7 +103,7 @@ def test_resolve_config_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         resolve_config_path(None)
 
 
-def test_post_message_placeholder_501() -> None:
+def test_post_message_lookup_unknown_module_404() -> None:
     pk = Ed25519PrivateKey.generate()
     body = _signed_body(private_key=pk, message_id="http-1", operation="lookup_module")
     app = create_app(
@@ -110,11 +113,10 @@ def test_post_message_placeholder_501() -> None:
     )
     client = TestClient(app)
     r = client.post("/message", content=body)
-    assert r.status_code == 501
+    assert r.status_code == 404
     data = r.json()
-    assert data["code"] == ErrorCode.OPERATION_NOT_IMPLEMENTED
+    assert data["code"] == ErrorCode.MODULE_NOT_FOUND
     assert data["status"] == "error"
-    assert "lookup_module" in data["detail"]
 
 
 def test_post_message_malformed_json_400() -> None:
@@ -127,6 +129,74 @@ def test_post_message_malformed_json_400() -> None:
     r = client.post("/message", content=b"{")
     assert r.status_code == 400
     assert r.json()["code"] == ErrorCode.MALFORMED_JSON
+
+
+def test_post_message_replay_returns_identical_success_json() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg_payload = {
+        "module_name": "modulr.storage",
+        "module_version": MODULE_VERSION,
+        "route": {"base_url": "https://replay.example"},
+        "signing_public_key": pub.hex(),
+    }
+    body = _signed_body(
+        private_key=pk,
+        message_id="replay-same",
+        operation="register_module",
+        payload=reg_payload,
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r1 = client.post("/message", content=body)
+    r2 = client.post("/message", content=body)
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json() == r2.json()
+
+
+def test_post_message_replay_without_cache_returns_409() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg_payload = {
+        "module_name": "modulr.cachemiss",
+        "module_version": MODULE_VERSION,
+        "route": {},
+        "signing_public_key": pub.hex(),
+    }
+    body = _signed_body(
+        private_key=pk,
+        message_id="cache-miss",
+        operation="register_module",
+        payload=reg_payload,
+    )
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r1 = client.post("/message", content=body)
+    assert r1.status_code == 200
+    conn.execute(
+        "UPDATE message_dedup SET result_summary = ? WHERE message_id = ?",
+        ("validated", "cache-miss"),
+    )
+    conn.commit()
+    r2 = client.post("/message", content=body)
+    assert r2.status_code == 409
+    assert r2.json()["code"] == ErrorCode.REPLAY_RESPONSE_UNAVAILABLE
 
 
 def test_post_message_too_large_413() -> None:
@@ -162,7 +232,31 @@ dev_mode = false
         config_path=cfg,
         clock=lambda: 1_700_000_010.0,
     )
-    body = _signed_body(private_key=pk, message_id="file-1")
+    mod_k = Ed25519PrivateKey.generate().public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg_payload = {
+        "module_name": "modulr.storage",
+        "module_version": MODULE_VERSION,
+        "route": {"base_url": "https://example.invalid"},
+        "signing_public_key": mod_k.hex(),
+    }
+    body_reg = _signed_body(
+        private_key=pk,
+        message_id="file-reg",
+        operation="register_module",
+        payload=reg_payload,
+    )
+    body_lu = _signed_body(
+        private_key=pk,
+        message_id="file-lu",
+        operation="lookup_module",
+    )
     with TestClient(app) as client:
-        r = client.post("/message", content=body)
-    assert r.status_code == 501
+        r1 = client.post("/message", content=body_reg)
+        assert r1.status_code == 200
+        assert r1.json()["code"] == str(SuccessCode.MODULE_REGISTERED)
+        r2 = client.post("/message", content=body_lu)
+        assert r2.status_code == 200
+        assert r2.json()["code"] == str(SuccessCode.MODULE_FOUND)
