@@ -27,7 +27,10 @@ _CONFIG_TABLE = "modulr_core"
 def load_settings(path: str | Path) -> Settings:
     """Read TOML from ``path`` and return validated :class:`Settings`."""
     p = Path(path)
-    data = p.read_bytes()
+    try:
+        data = p.read_bytes()
+    except FileNotFoundError as e:
+        raise ConfigurationError(f"configuration file not found: {p}") from e
     return load_settings_from_bytes(data, source=str(p))
 
 

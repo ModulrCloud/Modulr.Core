@@ -42,7 +42,12 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    app = create_app(config_path=path)
+    try:
+        app = create_app(config_path=path)
+    except ConfigurationError as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
     uvicorn.run(app, host=args.host, port=args.port)
 
 
