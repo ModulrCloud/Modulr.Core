@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
-from modulr_core.errors.codes import ErrorCode
+from modulr_core.clock import EpochClock
+from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.messages.constants import TARGET_MODULE_CORE
 from modulr_core.validation import payload_hash
 from modulr_core.version import MODULE_VERSION
@@ -25,6 +27,37 @@ def try_parse_message_id(body: bytes) -> str | None:
         return None
     mid = parsed.get("message_id")
     return mid if isinstance(mid, str) else None
+
+
+def success_response_envelope(
+    *,
+    request_message_id: str,
+    operation_response: str,
+    success_code: SuccessCode,
+    detail: str,
+    payload: dict[str, Any],
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Standard success-shaped JSON (``status`` ``success``)."""
+    now = float(clock())
+    ts = datetime.fromtimestamp(now, tz=UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+    )
+    resp_mid = f"{request_message_id}:response"
+    return {
+        "protocol_version": MODULE_VERSION,
+        "message_id": resp_mid,
+        "correlation_id": request_message_id,
+        "target_module": TARGET_MODULE_CORE,
+        "target_module_version": MODULE_VERSION,
+        "operation": operation_response,
+        "timestamp": ts,
+        "status": "success",
+        "code": str(success_code),
+        "detail": detail,
+        "payload": payload,
+        "payload_hash": payload_hash(payload),
+    }
 
 
 def error_response_envelope(
