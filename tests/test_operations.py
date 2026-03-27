@@ -82,7 +82,7 @@ def make_validated_inbound(
 def test_register_and_lookup_module() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    mod_key = Ed25519PrivateKey.generate().public_key().public_bytes(
+    sender_pub = pk.public_key().public_bytes(
         encoding=Encoding.Raw,
         format=PublicFormat.Raw,
     )
@@ -93,7 +93,7 @@ def test_register_and_lookup_module() -> None:
             "module_name": "modulr.storage",
             "module_version": MODULE_VERSION,
             "route": {"base_url": "https://s.example"},
-            "signing_public_key": mod_key.hex(),
+            "signing_public_key": sender_pub.hex(),
         },
         "m1",
     )
@@ -189,7 +189,7 @@ def test_heartbeat_requires_module() -> None:
 def test_heartbeat_after_register() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    mod_key = Ed25519PrivateKey.generate().public_key().public_bytes(
+    sender_pub = pk.public_key().public_bytes(
         encoding=Encoding.Raw,
         format=PublicFormat.Raw,
     )
@@ -200,7 +200,7 @@ def test_heartbeat_after_register() -> None:
             "module_name": "modulr.storage",
             "module_version": MODULE_VERSION,
             "route": {},
-            "signing_public_key": mod_key.hex(),
+            "signing_public_key": sender_pub.hex(),
         },
         "m1",
     )
@@ -218,3 +218,38 @@ def test_heartbeat_after_register() -> None:
     )
     out = dispatch_operation(hb, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out["code"] == str(SuccessCode.HEARTBEAT_RECORDED)
+
+
+def test_heartbeat_identity_mismatch() -> None:
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    other_pub = other.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": other_pub.hex(),
+        },
+        "m1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    hb = make_validated_inbound(
+        pk,
+        "heartbeat_update",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "status": "healthy",
+        },
+        "m2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(hb, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_MISMATCH

@@ -131,6 +131,74 @@ def test_post_message_malformed_json_400() -> None:
     assert r.json()["code"] == ErrorCode.MALFORMED_JSON
 
 
+def test_post_message_replay_returns_identical_success_json() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg_payload = {
+        "module_name": "modulr.storage",
+        "module_version": MODULE_VERSION,
+        "route": {"base_url": "https://replay.example"},
+        "signing_public_key": pub.hex(),
+    }
+    body = _signed_body(
+        private_key=pk,
+        message_id="replay-same",
+        operation="register_module",
+        payload=reg_payload,
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r1 = client.post("/message", content=body)
+    r2 = client.post("/message", content=body)
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json() == r2.json()
+
+
+def test_post_message_replay_without_cache_returns_409() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg_payload = {
+        "module_name": "modulr.cachemiss",
+        "module_version": MODULE_VERSION,
+        "route": {},
+        "signing_public_key": pub.hex(),
+    }
+    body = _signed_body(
+        private_key=pk,
+        message_id="cache-miss",
+        operation="register_module",
+        payload=reg_payload,
+    )
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r1 = client.post("/message", content=body)
+    assert r1.status_code == 200
+    conn.execute(
+        "UPDATE message_dedup SET result_summary = ? WHERE message_id = ?",
+        ("validated", "cache-miss"),
+    )
+    conn.commit()
+    r2 = client.post("/message", content=body)
+    assert r2.status_code == 409
+    assert r2.json()["code"] == ErrorCode.REPLAY_RESPONSE_UNAVAILABLE
+
+
 def test_post_message_too_large_413() -> None:
     app = create_app(
         settings=_settings(max_http_body_bytes=10),

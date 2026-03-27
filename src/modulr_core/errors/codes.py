@@ -56,6 +56,9 @@ class ErrorCode(StrEnum):
     OPERATION_NOT_IMPLEMENTED = "OPERATION_NOT_IMPLEMENTED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
+    # Idempotency / replay
+    REPLAY_RESPONSE_UNAVAILABLE = "REPLAY_RESPONSE_UNAVAILABLE"
+
 
 class SuccessCode(StrEnum):
     """Success `code` values for MVP operations."""

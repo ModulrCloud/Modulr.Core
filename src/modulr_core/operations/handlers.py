@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import sqlite3
 from typing import Any
 
@@ -292,10 +293,20 @@ def handle_heartbeat_update(
             code=ErrorCode.PAYLOAD_INVALID,
         )
 
-    if not ModulesRepository(conn).exists(module_name):
+    modules = ModulesRepository(conn)
+    mod_row = modules.get_by_name(module_name)
+    if mod_row is None:
         raise WireValidationError(
             f"module {module_name!r} is not registered",
             code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    reg_key = mod_row["signing_public_key"]
+    if isinstance(reg_key, memoryview):
+        reg_key = reg_key.tobytes()
+    if not secrets.compare_digest(validated.sender_public_key, reg_key):
+        raise WireValidationError(
+            "sender key does not match registered module signing_public_key",
+            code=ErrorCode.IDENTITY_MISMATCH,
         )
 
     HeartbeatRepository(conn).upsert(

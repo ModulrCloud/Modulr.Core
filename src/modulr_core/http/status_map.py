@@ -16,6 +16,12 @@ _CONFLICT = frozenset({
     ErrorCode.MODULE_ALREADY_REGISTERED,
     ErrorCode.NAME_ALREADY_BOUND,
     ErrorCode.MESSAGE_ID_CONFLICT,
+    ErrorCode.REPLAY_RESPONSE_UNAVAILABLE,
+})
+
+_FORBIDDEN = frozenset({
+    ErrorCode.UNAUTHORIZED,
+    ErrorCode.IDENTITY_MISMATCH,
 })
 
 
@@ -27,7 +33,7 @@ def http_status_for_error_code(code: ErrorCode) -> int:
         return 500
     if code is ErrorCode.OPERATION_NOT_IMPLEMENTED:
         return 501
-    if code is ErrorCode.UNAUTHORIZED:
+    if code in _FORBIDDEN:
         return 403
     if code in _NOT_FOUND:
         return 404
