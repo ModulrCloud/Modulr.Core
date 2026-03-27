@@ -92,6 +92,11 @@ def test_invalid_toml() -> None:
         load_settings_from_str("[modulr_core\n")
 
 
+def test_load_settings_missing_file() -> None:
+    with pytest.raises(ConfigurationError, match="not found"):
+        load_settings(Path("nonexistent-modulr-config-xyz.toml"))
+
+
 def test_non_utf8_bytes_raise_configuration_error() -> None:
     with pytest.raises(ConfigurationError, match="not valid UTF-8"):
         load_settings_from_bytes(b"\xff\xfe\x00", source="<test>")

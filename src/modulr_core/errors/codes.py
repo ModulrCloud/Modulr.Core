@@ -52,6 +52,10 @@ class ErrorCode(StrEnum):
     INVALID_STATUS = "INVALID_STATUS"
     METRICS_TOO_LARGE = "METRICS_TOO_LARGE"
 
+    # HTTP / deployment (until operation handlers land)
+    OPERATION_NOT_IMPLEMENTED = "OPERATION_NOT_IMPLEMENTED"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
 
 class SuccessCode(StrEnum):
     """Success `code` values for MVP operations."""
