@@ -24,8 +24,13 @@ def conn() -> sqlite3.Connection:
 
 def test_migrations_idempotent(conn: sqlite3.Connection) -> None:
     apply_migrations(conn)
-    cur = conn.execute("SELECT COUNT(*) AS n FROM schema_migrations")
-    assert cur.fetchone()["n"] == 1
+    n = conn.execute("SELECT COUNT(*) AS n FROM schema_migrations").fetchone()["n"]
+    assert n >= 1
+    apply_migrations(conn)
+    assert (
+        conn.execute("SELECT COUNT(*) AS n FROM schema_migrations").fetchone()["n"]
+        == n
+    )
 
 
 def test_modules_insert_and_get(conn: sqlite3.Connection) -> None:
@@ -110,6 +115,28 @@ def test_heartbeat_upsert_after_module(conn: sqlite3.Connection) -> None:
     assert row["last_seen_at"] == 99
 
 
+def test_name_bindings_list_by_resolved_id(conn: sqlite3.Connection) -> None:
+    nb = NameBindingsRepository(conn)
+    nb.insert(
+        name="alice@acme.network",
+        resolved_id="user:1",
+        route_json=None,
+        metadata_json=None,
+        created_at=1,
+    )
+    nb.insert(
+        name="acme.network",
+        resolved_id="user:1",
+        route_json="{}",
+        metadata_json=None,
+        created_at=2,
+    )
+    conn.commit()
+    rows = nb.list_by_resolved_id("user:1")
+    assert len(rows) == 2
+    assert [r["name"] for r in rows] == ["acme.network", "alice@acme.network"]
+
+
 def test_name_binding_roundtrip(conn: sqlite3.Connection) -> None:
     nb = NameBindingsRepository(conn)
     nb.insert(
@@ -142,6 +169,26 @@ def test_message_dedup_roundtrip_and_delete(conn: sqlite3.Connection) -> None:
     assert n == 1
     conn.commit()
     assert d.get_by_message_id("mid-1") is None
+
+
+def test_message_dedup_update_result_summary(conn: sqlite3.Connection) -> None:
+    d = MessageDedupRepository(conn)
+    fp = b"\xdd" * 32
+    d.insert(
+        message_id="mid-update",
+        request_fingerprint=fp,
+        result_summary="pending",
+        first_seen_at=1_000,
+    )
+    conn.commit()
+    full = '{"status":"success","code":"ok","detail":"done"}'
+    n = d.update_result_summary("mid-update", full)
+    assert n == 1
+    conn.commit()
+    row = d.get_by_message_id("mid-update")
+    assert row is not None
+    assert row["result_summary"] == full
+    assert d.update_result_summary("missing-id", full) == 0
 
 
 def test_open_database_file(tmp_path) -> None:

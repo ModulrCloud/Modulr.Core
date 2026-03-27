@@ -9,7 +9,10 @@ TARGET_MODULE_CORE = "modulr.core"
 CORE_OPERATIONS = frozenset({
     "register_module",
     "lookup_module",
+    "register_name",
+    "register_org",
     "resolve_name",
+    "reverse_resolve_name",
     "heartbeat_update",
 })
 

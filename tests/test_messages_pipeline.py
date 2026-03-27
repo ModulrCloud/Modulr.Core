@@ -266,7 +266,7 @@ def test_unsupported_operation() -> None:
     body = _signed_body(
         private_key=pk,
         message_id="msg-op",
-        operation="register_org",
+        operation="not_a_core_operation",
     )
     with pytest.raises(WireValidationError, match="operation"):
         validate_inbound_request(
