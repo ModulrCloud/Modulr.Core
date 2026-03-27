@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Modulr.Core — dev playground</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        line-height: 1.45;
+        --bg: #f4f4f5;
+        --surface: #ffffff;
+        --text: #1a1a1a;
+        --muted: #64748b;
+        --border: #e4e4e7;
+        --accent: #111827;
+        --accent-contrast: #ffffff;
+        --banner-bg: #fef3c7;
+        --banner-border: #f59e0b;
+        --code-bg: #f1f5f9;
+        --pre-bg: #0f172a;
+        --pre-fg: #e2e8f0;
+        --intro: #334155;
+        --link: #2563eb;
+      }
+
+      [data-theme="dark"] {
+        --bg: #0c0e12;
+        --surface: #151922;
+        --text: #e8eaef;
+        --muted: #94a3b8;
+        --border: #2a3140;
+        --accent: #38bdf8;
+        --accent-contrast: #0c0e12;
+        --banner-bg: #422006;
+        --banner-border: #d97706;
+        --code-bg: #1e293b;
+        --pre-bg: #020617;
+        --pre-fg: #cbd5e1;
+        --intro: #cbd5e1;
+        --link: #7dd3fc;
+      }
+
+      html {
+        color-scheme: light dark;
+      }
+
+      [data-theme="dark"] html {
+        color-scheme: dark;
+      }
+
+      body {
+        max-width: 52rem;
+        margin: 0 auto;
+        padding: 1rem 1.25rem 2rem;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      h1 {
+        font-size: 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .banner {
+        background: var(--banner-bg);
+        border: 1px solid var(--banner-border);
+        padding: 0.65rem 0.85rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+      }
+
+      label {
+        display: block;
+        margin-top: 0.65rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+
+      .checkbox-label {
+        font-weight: 500;
+        margin-top: 0.75rem;
+      }
+
+      .checkbox-label input {
+        width: auto;
+        margin-right: 0.35rem;
+      }
+
+      .field-intro {
+        margin: 0.5rem 0 0.75rem;
+        padding: 0.55rem 0.65rem;
+        font-size: 0.82rem;
+        color: var(--intro);
+        background: var(--code-bg);
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+
+      .field-intro code {
+        font-size: 0.85em;
+        padding: 0.05rem 0.25rem;
+        border-radius: 3px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.2rem;
+        padding: 0.45rem 0.55rem;
+        font: inherit;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      textarea {
+        min-height: 5.5rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.8rem;
+      }
+
+      select {
+        cursor: pointer;
+      }
+
+      button {
+        margin-top: 0.75rem;
+        padding: 0.45rem 0.9rem;
+        font: inherit;
+        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: var(--accent-contrast);
+      }
+
+      button.secondary {
+        background: var(--surface);
+        color: var(--text);
+        border-color: var(--border);
+      }
+
+      button.theme-toggle {
+        margin-top: 0;
+        padding: 0.35rem 0.65rem;
+        font-size: 0.8rem;
+      }
+
+      .row {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: flex-end;
+      }
+
+      .row button {
+        margin-top: 1.1rem;
+      }
+
+      pre {
+        background: var(--pre-bg);
+        color: var(--pre-fg);
+        padding: 0.85rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .key-status-ok {
+        color: #16a34a;
+      }
+
+      [data-theme="dark"] .key-status-ok {
+        color: #4ade80;
+      }
+
+      section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+      }
+
+      h2 {
+        margin: 0 0 0.5rem;
+        font-size: 1rem;
+      }
+
+      #fields {
+        margin-top: 0.75rem;
+        padding-top: 0.25rem;
+        border-top: 1px dashed var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>
+      Modulr.Core dev playground
+      <button
+        type="button"
+        class="theme-toggle secondary"
+        id="btnTheme"
+        title="Toggle light / dark"
+      >
+        Dark mode
+      </button>
+    </h1>
+    <p class="banner">
+      <strong>Development only.</strong> Signs envelopes in the browser (Ed25519) and POSTs
+      to <code>POST /message</code>. Open this page from the same host as
+      <code>modulr-core</code> (e.g. <code>http://127.0.0.1:8000/playground/</code>) so
+      requests stay same-origin. Ed25519 signing uses a <strong>bundled</strong>
+      library served with this app (no CDN required). Key generation uses only your
+      browser’s RNG. If the server rejects a request, the JSON body usually includes
+      <code>status: "error"</code>, a <code>code</code> (e.g.
+      <code>PAYLOAD_INVALID</code>), and a <code>detail</code> explaining missing or
+      invalid fields.
+    </p>
+
+    <section>
+      <h2>Connection</h2>
+      <label>API base URL (leave empty for this origin)</label>
+      <input id="baseUrl" type="text" placeholder="e.g. http://127.0.0.1:8000" />
+      <p class="muted" id="protoLine">Protocol version: …</p>
+    </section>
+
+    <section>
+      <h2>Signing key (Ed25519)</h2>
+      <p class="muted">
+        Private key hex (32 bytes = 128 hex chars). Used for the envelope signature and,
+        for <code>register_module</code>, optionally as <code>signing_public_key</code>.
+      </p>
+      <textarea id="privHex" rows="3" spellcheck="false" placeholder="Click “Generate new key” or paste 128 hex chars"></textarea>
+      <div class="row">
+        <button type="button" class="secondary" id="btnGenKey">Generate new key</button>
+        <button type="button" class="secondary" id="btnFillPub">Show public key hex</button>
+      </div>
+      <p class="muted" id="pubLine"></p>
+    </section>
+
+    <section>
+      <h2>Request</h2>
+      <label>Operation</label>
+      <select id="operation">
+        <option value="register_module">register_module</option>
+        <option value="lookup_module">lookup_module</option>
+        <option value="register_name">register_name</option>
+        <option value="register_org">register_org</option>
+        <option value="resolve_name">resolve_name</option>
+        <option value="reverse_resolve_name">reverse_resolve_name</option>
+        <option value="heartbeat_update">heartbeat_update</option>
+      </select>
+
+      <div id="fields"></div>
+
+      <label>sender_id</label>
+      <input id="senderId" type="text" value="user:playground" />
+
+      <button type="button" id="btnSend">Sign &amp; send</button>
+    </section>
+
+    <section>
+      <h2>Response</h2>
+      <pre id="out">(no response yet)</pre>
+    </section>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
