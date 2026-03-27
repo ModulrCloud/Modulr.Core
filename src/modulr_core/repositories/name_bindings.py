@@ -35,3 +35,14 @@ class NameBindingsRepository:
         )
         row = cur.fetchone()
         return dict(row) if row else None
+
+    def list_by_resolved_id(self, resolved_id: str) -> list[dict[str, Any]]:
+        cur = self._conn.execute(
+            """
+            SELECT * FROM name_bindings
+            WHERE resolved_id = ?
+            ORDER BY name ASC
+            """,
+            (resolved_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]

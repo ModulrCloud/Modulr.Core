@@ -16,7 +16,10 @@ from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import InvalidHexEncoding, WireValidationError
 from modulr_core.http.envelope import success_response_envelope
 from modulr_core.messages.types import ValidatedInbound
-from modulr_core.operations.authorize import require_bootstrap_to_register_module
+from modulr_core.operations.authorize import (
+    require_bootstrap_sender,
+    require_bootstrap_to_register_module,
+)
 from modulr_core.operations.payload_util import (
     optional_dict,
     optional_json_value,
@@ -27,7 +30,11 @@ from modulr_core.repositories.heartbeat import HeartbeatRepository
 from modulr_core.repositories.modules import ModulesRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
 from modulr_core.validation import canonical_json_str, decode_hex_fixed
-from modulr_core.validation.names import validate_modulr_resolve_name
+from modulr_core.validation.names import (
+    validate_modulr_org_domain,
+    validate_modulr_resolve_name,
+    validate_resolved_id,
+)
 
 _MODULE_NAME_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
@@ -201,6 +208,40 @@ def _module_row_to_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _norm_json_text_cell(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, memoryview):
+        value = value.tobytes().decode("utf-8")
+    return value if value else None
+
+
+def _binding_row_matches(
+    row: dict[str, Any],
+    *,
+    resolved_id: str,
+    route_json: str | None,
+    metadata_json: str | None,
+) -> bool:
+    rj = _norm_json_text_cell(row.get("route_json"))
+    mj = _norm_json_text_cell(row.get("metadata_json"))
+    return (
+        row["resolved_id"] == resolved_id
+        and rj == (route_json or None)
+        and mj == (metadata_json or None)
+    )
+
+
+def _name_binding_row_to_entry(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": row["name"],
+        "resolved_id": row["resolved_id"],
+        "route": json.loads(row["route_json"]) if row["route_json"] else None,
+        "metadata": json.loads(row["metadata_json"]) if row["metadata_json"] else None,
+        "created_at": row["created_at"],
+    }
+
+
 def handle_resolve_name(
     validated: ValidatedInbound,
     *,
@@ -231,6 +272,194 @@ def handle_resolve_name(
         operation_response="resolve_name_response",
         success_code=SuccessCode.NAME_RESOLVED,
         detail="Name resolved.",
+        payload=out_payload,
+        clock=clock,
+    )
+
+
+def handle_register_name(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    env = validated.envelope
+    require_bootstrap_sender(
+        settings=settings,
+        sender_public_key_hex=env["sender_public_key"],
+    )
+    p: dict[str, Any] = env["payload"]
+    name = validate_modulr_resolve_name(require_str(p, "name"))
+    resolved_id = validate_resolved_id(require_str(p, "resolved_id"))
+    route = optional_dict(p, "route")
+    metadata = optional_json_value(p, "metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise WireValidationError(
+            "payload.metadata must be a JSON object or null",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    try:
+        route_json = canonical_json_str(route) if route is not None else None
+        meta_json = canonical_json_str(metadata) if metadata is not None else None
+    except (TypeError, ValueError) as e:
+        raise WireValidationError(str(e), code=ErrorCode.PAYLOAD_INVALID) from e
+
+    repo = NameBindingsRepository(conn)
+    now = int(clock())
+    existing = repo.get_by_name(name)
+    if existing is not None:
+        if _binding_row_matches(
+            existing,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=meta_json,
+        ):
+            out_payload: dict[str, Any] = {
+                "name": name,
+                "resolved_id": resolved_id,
+                "created_at": existing["created_at"],
+            }
+            return success_response_envelope(
+                request_message_id=env["message_id"],
+                operation_response="register_name_response",
+                success_code=SuccessCode.NAME_REGISTERED,
+                detail="Name already registered (idempotent).",
+                payload=out_payload,
+                clock=clock,
+            )
+        raise WireValidationError(
+            "name is already bound to different data",
+            code=ErrorCode.NAME_ALREADY_BOUND,
+        )
+
+    repo.insert(
+        name=name,
+        resolved_id=resolved_id,
+        route_json=route_json,
+        metadata_json=meta_json,
+        created_at=now,
+    )
+    out_payload = {
+        "name": name,
+        "resolved_id": resolved_id,
+        "created_at": now,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="register_name_response",
+        success_code=SuccessCode.NAME_REGISTERED,
+        detail="Name registered.",
+        payload=out_payload,
+        clock=clock,
+    )
+
+
+def handle_register_org(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    env = validated.envelope
+    require_bootstrap_sender(
+        settings=settings,
+        sender_public_key_hex=env["sender_public_key"],
+    )
+    p: dict[str, Any] = env["payload"]
+    name = validate_modulr_org_domain(require_str(p, "organization_name"))
+    resolved_id = validate_resolved_id(require_str(p, "resolved_id"))
+    route = optional_dict(p, "route")
+    metadata = optional_json_value(p, "metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        raise WireValidationError(
+            "payload.metadata must be a JSON object or null",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    try:
+        route_json = canonical_json_str(route) if route is not None else None
+        meta_json = canonical_json_str(metadata) if metadata is not None else None
+    except (TypeError, ValueError) as e:
+        raise WireValidationError(str(e), code=ErrorCode.PAYLOAD_INVALID) from e
+
+    repo = NameBindingsRepository(conn)
+    now = int(clock())
+    existing = repo.get_by_name(name)
+    if existing is not None:
+        if _binding_row_matches(
+            existing,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=meta_json,
+        ):
+            org_payload: dict[str, Any] = {
+                "organization_name": name,
+                "resolved_id": resolved_id,
+                "created_at": existing["created_at"],
+            }
+            return success_response_envelope(
+                request_message_id=env["message_id"],
+                operation_response="register_org_response",
+                success_code=SuccessCode.ORG_REGISTERED,
+                detail="Organization already registered (idempotent).",
+                payload=org_payload,
+                clock=clock,
+            )
+        raise WireValidationError(
+            "organization_name is already bound to different data",
+            code=ErrorCode.NAME_ALREADY_BOUND,
+        )
+
+    repo.insert(
+        name=name,
+        resolved_id=resolved_id,
+        route_json=route_json,
+        metadata_json=meta_json,
+        created_at=now,
+    )
+    org_payload = {
+        "organization_name": name,
+        "resolved_id": resolved_id,
+        "created_at": now,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="register_org_response",
+        success_code=SuccessCode.ORG_REGISTERED,
+        detail="Organization registered.",
+        payload=org_payload,
+        clock=clock,
+    )
+
+
+def handle_reverse_resolve_name(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    resolved_id = validate_resolved_id(require_str(p, "resolved_id"))
+    rows = NameBindingsRepository(conn).list_by_resolved_id(resolved_id)
+    if not rows:
+        raise WireValidationError(
+            f"no names bound to resolved_id {resolved_id!r}",
+            code=ErrorCode.IDENTITY_NOT_FOUND,
+        )
+    names = [_name_binding_row_to_entry(r) for r in rows]
+    out_payload: dict[str, Any] = {
+        "resolved_id": resolved_id,
+        "names": names,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="reverse_resolve_name_response",
+        success_code=SuccessCode.NAME_REVERSE_RESOLVED,
+        detail="Identity reverse-resolved.",
         payload=out_payload,
         clock=clock,
     )

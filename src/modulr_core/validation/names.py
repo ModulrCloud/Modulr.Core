@@ -36,6 +36,40 @@ _SCOPED_RE = re.compile(
 _ORG_DOMAIN_RE = re.compile(rf"^{_DOMAIN_DOT}$")
 
 
+_MAX_RESOLVED_ID_LEN = 512
+
+
+def validate_resolved_id(raw: str) -> str:
+    """Return stripped ``resolved_id`` for name bindings (opaque identity string)."""
+    s = raw.strip()
+    if not s:
+        raise WireValidationError(
+            "resolved_id must be a non-empty string",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if len(s) > _MAX_RESOLVED_ID_LEN:
+        raise WireValidationError(
+            "resolved_id exceeds maximum length",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    return s
+
+
+def validate_modulr_org_domain(name: str) -> str:
+    """Return stripped org-style domain (``domain.subdomain``), no ``@`` or handle."""
+    s = name.strip()
+    if not s:
+        _fail("organization_name must be a non-empty string", ErrorCode.INVALID_NAME)
+    if len(s) > 512:
+        _fail("organization_name exceeds maximum length", ErrorCode.INVALID_NAME)
+    if _ORG_DOMAIN_RE.match(s):
+        return s
+    _fail(
+        "organization_name must be a dotted domain (e.g. acme.network)",
+        ErrorCode.INVALID_NAME,
+    )
+
+
 def validate_modulr_resolve_name(name: str) -> str:
     """Return stripped ``name`` if it matches a supported Modulr name form.
 

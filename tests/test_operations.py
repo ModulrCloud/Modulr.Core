@@ -13,7 +13,12 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from modulr_core import MODULE_VERSION, ErrorCode, SuccessCode, WireValidationError
+from modulr_core import (
+    MODULE_VERSION,
+    ErrorCode,
+    SuccessCode,
+    WireValidationError,
+)
 from modulr_core.config.schema import Settings
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.dispatch import dispatch_operation
@@ -253,3 +258,173 @@ def test_heartbeat_identity_mismatch() -> None:
     with pytest.raises(WireValidationError) as ei:
         dispatch_operation(hb, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert ei.value.code is ErrorCode.IDENTITY_MISMATCH
+
+
+def test_register_name_resolve_and_reverse() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    reg = make_validated_inbound(
+        pk,
+        "register_name",
+        {
+            "name": "user@modulr.network",
+            "resolved_id": "user:alice",
+            "route": {"web": "https://example"},
+        },
+        "m-reg",
+    )
+    out = dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 10.0)
+    assert out["code"] == str(SuccessCode.NAME_REGISTERED)
+    assert out["payload"]["resolved_id"] == "user:alice"
+
+    v_res = make_validated_inbound(
+        pk,
+        "resolve_name",
+        {"name": "user@modulr.network"},
+        "m-res",
+    )
+    out_res = dispatch_operation(
+        v_res,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 11.0,
+    )
+    assert out_res["payload"]["resolved_id"] == "user:alice"
+
+    v_rev = make_validated_inbound(
+        pk,
+        "reverse_resolve_name",
+        {"resolved_id": "user:alice"},
+        "m-rev",
+    )
+    out_rev = dispatch_operation(
+        v_rev,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 12.0,
+    )
+    assert out_rev["code"] == str(SuccessCode.NAME_REVERSE_RESOLVED)
+    assert len(out_rev["payload"]["names"]) == 1
+    assert out_rev["payload"]["names"][0]["name"] == "user@modulr.network"
+
+
+def test_register_org_and_reverse_lists_both() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_org",
+            {
+                "organization_name": "acme.network",
+                "resolved_id": "org:1",
+            },
+            "o1",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_name",
+            {
+                "name": "bob@acme.network",
+                "resolved_id": "org:1",
+            },
+            "n1",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    out = dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "reverse_resolve_name",
+            {"resolved_id": "org:1"},
+            "r1",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 3.0,
+    )
+    names = {e["name"] for e in out["payload"]["names"]}
+    assert names == {"acme.network", "bob@acme.network"}
+
+
+def test_reverse_resolve_identity_not_found() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(
+            make_validated_inbound(
+                pk,
+                "reverse_resolve_name",
+                {"resolved_id": "user:missing"},
+                "m1",
+            ),
+            settings=_settings(),
+            conn=conn,
+            clock=lambda: 1.0,
+        )
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_register_name_conflict() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    NameBindingsRepository(conn).insert(
+        name="user@modulr.network",
+        resolved_id="user:other",
+        route_json=None,
+        metadata_json=None,
+        created_at=1,
+    )
+    conn.commit()
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(
+            make_validated_inbound(
+                pk,
+                "register_name",
+                {
+                    "name": "user@modulr.network",
+                    "resolved_id": "user:alice",
+                },
+                "m1",
+            ),
+            settings=_settings(),
+            conn=conn,
+            clock=lambda: 1.0,
+        )
+    assert ei.value.code is ErrorCode.NAME_ALREADY_BOUND
+
+
+def test_register_name_requires_bootstrap_when_configured() -> None:
+    allowed = Ed25519PrivateKey.generate()
+    signer = Ed25519PrivateKey.generate()
+    allowed_hex = allowed.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    conn = _conn()
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(
+            make_validated_inbound(
+                signer,
+                "register_name",
+                {
+                    "name": "@alice",
+                    "resolved_id": "user:a",
+                },
+                "m1",
+            ),
+            settings=_settings(
+                bootstrap_public_keys=(allowed_hex,),
+                dev_mode=False,
+            ),
+            conn=conn,
+            clock=lambda: 1.0,
+        )
+    assert ei.value.code is ErrorCode.UNAUTHORIZED

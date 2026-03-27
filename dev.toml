@@ -1,0 +1,6 @@
+# Local development — not for production.
+# Any verified sender may register modules while dev_mode is true.
+
+[modulr_core]
+dev_mode = true
+bootstrap_public_keys = []

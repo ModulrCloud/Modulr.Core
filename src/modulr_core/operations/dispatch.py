@@ -14,13 +14,19 @@ from modulr_core.operations.handlers import (
     handle_heartbeat_update,
     handle_lookup_module,
     handle_register_module,
+    handle_register_name,
+    handle_register_org,
     handle_resolve_name,
+    handle_reverse_resolve_name,
 )
 
 _HANDLERS = {
     "register_module": handle_register_module,
     "lookup_module": handle_lookup_module,
+    "register_name": handle_register_name,
+    "register_org": handle_register_org,
     "resolve_name": handle_resolve_name,
+    "reverse_resolve_name": handle_reverse_resolve_name,
     "heartbeat_update": handle_heartbeat_update,
 }
 

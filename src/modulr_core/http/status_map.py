@@ -11,6 +11,7 @@ _PAYLOAD_TOO_LARGE = 413
 _NOT_FOUND = frozenset({
     ErrorCode.MODULE_NOT_FOUND,
     ErrorCode.NAME_NOT_FOUND,
+    ErrorCode.IDENTITY_NOT_FOUND,
 })
 _CONFLICT = frozenset({
     ErrorCode.MODULE_ALREADY_REGISTERED,
