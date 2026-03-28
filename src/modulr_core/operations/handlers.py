@@ -242,6 +242,61 @@ def _name_binding_row_to_entry(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _insert_name_binding_idempotent(
+    repo: NameBindingsRepository,
+    *,
+    name: str,
+    resolved_id: str,
+    route_json: str | None,
+    metadata_json: str | None,
+    now: int,
+    conflict_message: str,
+) -> tuple[int, bool]:
+    """Insert a name binding; handle races like :func:`handle_register_module`.
+
+    Returns ``(created_at, is_new_insert)``. On duplicate key with mismatched data,
+    raises ``NAME_ALREADY_BOUND`` with ``conflict_message``.
+    """
+    existing = repo.get_by_name(name)
+    if existing is not None:
+        if _binding_row_matches(
+            existing,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=metadata_json,
+        ):
+            return (existing["created_at"], False)
+        raise WireValidationError(
+            conflict_message,
+            code=ErrorCode.NAME_ALREADY_BOUND,
+        )
+
+    try:
+        repo.insert(
+            name=name,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=metadata_json,
+            created_at=now,
+        )
+    except sqlite3.IntegrityError:
+        existing = repo.get_by_name(name)
+        if existing is None:
+            raise
+        if _binding_row_matches(
+            existing,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=metadata_json,
+        ):
+            return (existing["created_at"], False)
+        raise WireValidationError(
+            conflict_message,
+            code=ErrorCode.NAME_ALREADY_BOUND,
+        ) from None
+    return (now, True)
+
+
 def handle_resolve_name(
     validated: ValidatedInbound,
     *,
@@ -307,49 +362,29 @@ def handle_register_name(
 
     repo = NameBindingsRepository(conn)
     now = int(clock())
-    existing = repo.get_by_name(name)
-    if existing is not None:
-        if _binding_row_matches(
-            existing,
-            resolved_id=resolved_id,
-            route_json=route_json,
-            metadata_json=meta_json,
-        ):
-            out_payload: dict[str, Any] = {
-                "name": name,
-                "resolved_id": resolved_id,
-                "created_at": existing["created_at"],
-            }
-            return success_response_envelope(
-                request_message_id=env["message_id"],
-                operation_response="register_name_response",
-                success_code=SuccessCode.NAME_REGISTERED,
-                detail="Name already registered (idempotent).",
-                payload=out_payload,
-                clock=clock,
-            )
-        raise WireValidationError(
-            "name is already bound to different data",
-            code=ErrorCode.NAME_ALREADY_BOUND,
-        )
-
-    repo.insert(
+    created_at, is_new = _insert_name_binding_idempotent(
+        repo,
         name=name,
         resolved_id=resolved_id,
         route_json=route_json,
         metadata_json=meta_json,
-        created_at=now,
+        now=now,
+        conflict_message="name is already bound to different data",
     )
-    out_payload = {
+    out_payload: dict[str, Any] = {
         "name": name,
         "resolved_id": resolved_id,
-        "created_at": now,
+        "created_at": created_at,
     }
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="register_name_response",
         success_code=SuccessCode.NAME_REGISTERED,
-        detail="Name registered.",
+        detail=(
+            "Name registered."
+            if is_new
+            else "Name already registered (idempotent)."
+        ),
         payload=out_payload,
         clock=clock,
     )
@@ -385,49 +420,29 @@ def handle_register_org(
 
     repo = NameBindingsRepository(conn)
     now = int(clock())
-    existing = repo.get_by_name(name)
-    if existing is not None:
-        if _binding_row_matches(
-            existing,
-            resolved_id=resolved_id,
-            route_json=route_json,
-            metadata_json=meta_json,
-        ):
-            org_payload: dict[str, Any] = {
-                "organization_name": name,
-                "resolved_id": resolved_id,
-                "created_at": existing["created_at"],
-            }
-            return success_response_envelope(
-                request_message_id=env["message_id"],
-                operation_response="register_org_response",
-                success_code=SuccessCode.ORG_REGISTERED,
-                detail="Organization already registered (idempotent).",
-                payload=org_payload,
-                clock=clock,
-            )
-        raise WireValidationError(
-            "organization_name is already bound to different data",
-            code=ErrorCode.NAME_ALREADY_BOUND,
-        )
-
-    repo.insert(
+    created_at, is_new = _insert_name_binding_idempotent(
+        repo,
         name=name,
         resolved_id=resolved_id,
         route_json=route_json,
         metadata_json=meta_json,
-        created_at=now,
+        now=now,
+        conflict_message="organization_name is already bound to different data",
     )
-    org_payload = {
+    org_payload: dict[str, Any] = {
         "organization_name": name,
         "resolved_id": resolved_id,
-        "created_at": now,
+        "created_at": created_at,
     }
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="register_org_response",
         success_code=SuccessCode.ORG_REGISTERED,
-        detail="Organization registered.",
+        detail=(
+            "Organization registered."
+            if is_new
+            else "Organization already registered (idempotent)."
+        ),
         payload=org_payload,
         clock=clock,
     )

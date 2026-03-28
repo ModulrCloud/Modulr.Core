@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from modulr_core.clock import EpochClock, now_epoch_seconds
 from modulr_core.config.load import load_settings
@@ -23,9 +24,11 @@ from modulr_core.http.envelope import error_response_envelope, try_parse_message
 from modulr_core.http.replay_cache import parse_stored_response_envelope
 from modulr_core.http.status_map import http_status_for_error_code
 from modulr_core.messages import validate_inbound_request
+from modulr_core.messages.constants import TARGET_MODULE_CORE
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, open_database
 from modulr_core.repositories.message_dedup import MessageDedupRepository
+from modulr_core.version import MODULE_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -172,5 +175,21 @@ def create_app(
             app.state.conn.commit()
 
         return JSONResponse(response_body, status_code=200)
+
+    playground_dir = Path(__file__).resolve().parent / "static" / "playground"
+    if settings.dev_mode and playground_dir.is_dir():
+
+        @app.get("/playground/protocol-info")
+        async def playground_protocol_info() -> dict[str, str]:
+            return {
+                "protocol_version": MODULE_VERSION,
+                "target_module": TARGET_MODULE_CORE,
+            }
+
+        app.mount(
+            "/playground",
+            StaticFiles(directory=str(playground_dir), html=True),
+            name="playground",
+        )
 
     return app

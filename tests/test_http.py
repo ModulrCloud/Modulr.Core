@@ -260,3 +260,27 @@ dev_mode = false
         r2 = client.post("/message", content=body_lu)
         assert r2.status_code == 200
         assert r2.json()["code"] == str(SuccessCode.MODULE_FOUND)
+
+
+def test_playground_protocol_info_when_dev_mode() -> None:
+    app = create_app(
+        settings=_settings(dev_mode=True),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.get("/playground/protocol-info")
+    assert r.status_code == 200
+    data = r.json()
+    assert "protocol_version" in data
+    assert data.get("target_module") == "modulr.core"
+
+
+def test_playground_not_mounted_when_not_dev_mode() -> None:
+    app = create_app(
+        settings=_settings(dev_mode=False),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    assert client.get("/playground/protocol-info").status_code == 404
