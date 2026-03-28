@@ -1,0 +1,55 @@
+[
+  {
+    "id": "empty_object",
+    "value": {}
+  },
+  {
+    "id": "sort_keys_ascii",
+    "value": { "z": 1, "a": 2, "m": 3 }
+  },
+  {
+    "id": "unicode_key_order",
+    "value": { "\u0100": 1, "A": 2, "z": 3 }
+  },
+  {
+    "id": "nested",
+    "value": { "b": { "y": 1, "x": 2 }, "a": [] }
+  },
+  {
+    "id": "string_escapes",
+    "value": { "q": "line\nbreak\t\"slash\\" }
+  },
+  {
+    "id": "control_u001f",
+    "value": { "c": "\u001f" }
+  },
+  {
+    "id": "unicode_text",
+    "value": { "café": "résumé" }
+  },
+  {
+    "id": "float_small_exp",
+    "value": { "a": 9e-5, "b": 1e-5 }
+  },
+  {
+    "id": "float_large_exp",
+    "value": { "x": 1e20 }
+  },
+  {
+    "id": "float_decimal",
+    "value": { "t": 1732752000.456 }
+  },
+  {
+    "id": "mixed_array",
+    "value": { "arr": [null, true, false, 0, ""] }
+  },
+  {
+    "id": "heartbeat_like",
+    "value": {
+      "module_name": "modulr.storage",
+      "module_version": "2026.3.22.0",
+      "status": "ok",
+      "metrics": { "q": 1, "load": 0.1 }
+    }
+  }
+]

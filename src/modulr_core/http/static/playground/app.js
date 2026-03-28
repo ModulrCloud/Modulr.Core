@@ -5,6 +5,8 @@
  * Falls back to esm.sh only if the local module fails to load.
  */
 
+import { canonicalJsonStr } from "./canonical_json.mjs";
+
 const NOBLE_VENDOR = new URL("./vendor/noble-ed25519.bundle.mjs", import.meta.url)
   .href;
 const NOBLE_CDN_FALLBACK =
@@ -28,20 +30,6 @@ function loadNoble() {
 }
 
 let protocolVersion = "2026.3.22.0";
-
-function sortKeysDeep(v) {
-  if (v === null || typeof v !== "object") return v;
-  if (Array.isArray(v)) return v.map(sortKeysDeep);
-  const o = {};
-  for (const k of Object.keys(v).sort()) {
-    o[k] = sortKeysDeep(v[k]);
-  }
-  return o;
-}
-
-function canonicalJsonStr(value) {
-  return JSON.stringify(sortKeysDeep(value));
-}
 
 async function sha256HexUtf8(text) {
   const buf = new TextEncoder().encode(text);
@@ -281,7 +269,7 @@ async function sendEnvelope() {
   const preimage = new TextEncoder().encode(canonicalJsonStr(env));
   const sig = await signAsync(preimage, priv);
   env.signature = bytesToHex(sig);
-  const body = JSON.stringify(env);
+  const body = canonicalJsonStr(env);
   const base = apiBase();
   const url = `${base || ""}/message`;
   const res = await fetch(url, {

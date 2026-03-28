@@ -232,7 +232,9 @@
       browser’s RNG. If the server rejects a request, the JSON body usually includes
       <code>status: "error"</code>, a <code>code</code> (e.g.
       <code>PAYLOAD_INVALID</code>), and a <code>detail</code> explaining missing or
-      invalid fields.
+      invalid fields. Canonical JSON for signing matches Python
+      <code>json.dumps</code> (sorted keys, no NaN, string/number rules); unusual floats may
+      still differ in edge cases—use integers in JSON when you can.
     </p>
 
     <section>
@@ -245,10 +247,10 @@
     <section>
       <h2>Signing key (Ed25519)</h2>
       <p class="muted">
-        Private key hex (32 bytes = 128 hex chars). Used for the envelope signature and,
-        for <code>register_module</code>, optionally as <code>signing_public_key</code>.
+        Private key hex (32 bytes = 64 hex characters). Used for the envelope signature
+        and, for <code>register_module</code>, optionally as <code>signing_public_key</code>.
       </p>
-      <textarea id="privHex" rows="3" spellcheck="false" placeholder="Click “Generate new key” or paste 128 hex chars"></textarea>
+      <textarea id="privHex" rows="3" spellcheck="false" placeholder="Click “Generate new key” or paste 64 hex chars (32 bytes)"></textarea>
       <div class="row">
         <button type="button" class="secondary" id="btnGenKey">Generate new key</button>
         <button type="button" class="secondary" id="btnFillPub">Show public key hex</button>
