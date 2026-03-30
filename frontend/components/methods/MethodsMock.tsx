@@ -36,7 +36,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. The module must already be registered or Core returns MODULE_NOT_FOUND.";
   }
   if (methodId === "get_module_functions") {
-    return "Same signing path. Core does not implement this operation yet — expect an error until the handler lands.";
+    return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }

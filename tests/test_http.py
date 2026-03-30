@@ -17,6 +17,7 @@ from modulr_core import MODULE_VERSION, ErrorCode, SuccessCode
 from modulr_core.config.schema import Settings
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http import create_app, resolve_config_path
+from modulr_core.messages.constants import CORE_OPERATIONS
 from modulr_core.persistence import apply_migrations, connect_memory
 from modulr_core.validation import envelope_signing_bytes, payload_hash
 
@@ -320,6 +321,29 @@ def test_post_message_get_protocol_version() -> None:
     assert data["status"] == "success"
     assert data["code"] == str(SuccessCode.PROTOCOL_VERSION_RETURNED)
     assert data["payload"]["protocol_version"] == MODULE_VERSION
+
+
+def test_post_message_get_module_functions_modulr_core() -> None:
+    pk = Ed25519PrivateKey.generate()
+    body = _signed_body(
+        private_key=pk,
+        message_id="gmf-http-1",
+        operation="get_module_functions",
+        payload={"module_id": "modulr.core"},
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.post("/message", content=body)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert data["payload"]["module_id"] == "modulr.core"
+    assert data["payload"]["operations"] == sorted(CORE_OPERATIONS)
 
 
 def test_post_message_get_protocol_version_rejects_non_empty_payload() -> None:

@@ -8,6 +8,7 @@ TARGET_MODULE_CORE = "modulr.core"
 
 CORE_OPERATIONS = frozenset({
     "get_protocol_version",
+    "get_module_functions",
     "register_module",
     "lookup_module",
     "register_name",

@@ -15,6 +15,7 @@ from modulr_core.config.schema import Settings
 from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import InvalidHexEncoding, WireValidationError
 from modulr_core.http.envelope import success_response_envelope
+from modulr_core.messages.constants import CORE_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.authorize import (
     require_bootstrap_sender,
@@ -49,16 +50,16 @@ _MAX_METRICS_CANONICAL_BYTES = 65_536
 
 
 def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") -> str:
-    """Strip, validate dotted form, return lowercase canonical ``module_name``."""
+    """Strip, validate dotted form, return lowercase canonical module id."""
     raw = require_str(p, field).strip()
     if not raw:
         raise WireValidationError(
-            "module_name must not be empty",
+            f"{field} must not be empty",
             code=ErrorCode.INVALID_MODULE_NAME,
         )
     if not _MODULE_NAME_RE.match(raw):
         raise WireValidationError(
-            "module_name must be a dotted logical name (e.g. modulr.storage)",
+            f"{field} must be a dotted logical name (e.g. modulr.storage)",
             code=ErrorCode.INVALID_MODULE_NAME,
         )
     return normalize_module_name(raw)
@@ -103,6 +104,52 @@ def handle_get_protocol_version(
         success_code=SuccessCode.PROTOCOL_VERSION_RETURNED,
         detail="Protocol version.",
         payload={"protocol_version": MODULE_VERSION},
+        clock=clock,
+    )
+
+
+def handle_get_module_functions(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Return Core wire op names for ``modulr.core``; else empty ``operations``."""
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    if module_id == CANONICAL_CORE_MODULE_NAME:
+        ops = sorted(CORE_OPERATIONS)
+        return success_response_envelope(
+            request_message_id=env["message_id"],
+            operation_response="get_module_functions_response",
+            success_code=SuccessCode.MODULE_FUNCTIONS_RETURNED,
+            detail="Operations implemented by modulr.core on the wire.",
+            payload={
+                "module_id": module_id,
+                "operations": ops,
+                "operation_count": len(ops),
+            },
+            clock=clock,
+        )
+    row = ModulesRepository(conn).get_by_name(module_id)
+    if row is None:
+        raise WireValidationError(
+            f"module {module_id!r} not found",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_module_functions_response",
+        success_code=SuccessCode.MODULE_FUNCTIONS_RETURNED,
+        detail="No operation manifest stored for this module.",
+        payload={
+            "module_id": module_id,
+            "operations": [],
+            "operation_count": 0,
+        },
         clock=clock,
     )
 
