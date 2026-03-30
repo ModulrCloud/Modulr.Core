@@ -10,9 +10,24 @@ import socket
 import sys
 from pathlib import Path
 
+from fastapi import FastAPI
+
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http.app import create_app
 from modulr_core.http.config_resolve import resolve_config_path
+
+# Directory containing this package (watch target for ``--reload``).
+_MODULR_CORE_PACKAGE_DIR = Path(__file__).resolve().parent
+
+
+def create_cli_app_for_reload() -> FastAPI:
+    """ASGI factory for uvicorn ``--reload``.
+
+    Uvicorn requires an import string (not an in-memory app) for reload to run.
+    The parent sets :envvar:`MODULR_CORE_CONFIG` to an absolute path before
+    spawning workers.
+    """
+    return create_app(config_path=None)
 
 
 def _tcp_bind_address_in_use(err: OSError) -> bool:
@@ -117,6 +132,15 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Debug: log each HTTP request and list routes at startup.",
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help=(
+            "Development only: restart when Python files under the modulr_core "
+            "package change. Install modulr-core[http] or uvicorn[standard] for "
+            "efficient file watching."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.verbose:
@@ -145,12 +169,27 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     _preflight_listen(args.host, args.port)
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level="debug" if args.verbose else "info",
-    )
+    log_level = "debug" if args.verbose else "info"
+    if args.reload:
+        # Uvicorn only enables reload when the app is given as an import string.
+        os.environ["MODULR_CORE_CONFIG"] = str(path.resolve())
+        reload_dirs = [str(_MODULR_CORE_PACKAGE_DIR)]
+        uvicorn.run(
+            "modulr_core.cli:create_cli_app_for_reload",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            log_level=log_level,
+            reload=True,
+            reload_dirs=reload_dirs,
+        )
+    else:
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level=log_level,
+        )
 
 
 if __name__ == "__main__":
