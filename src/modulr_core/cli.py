@@ -90,7 +90,8 @@ def _preflight_listen(host: str, port: int) -> None:
 
     if not bound_any:
         print(
-            f"error: cannot bind to {host!r}:{port} (no usable socket for resolved addresses).",
+            f"error: cannot bind to {host!r}:{port} "
+            "(no usable socket for resolved addresses).",
             file=sys.stderr,
         )
         sys.exit(1)
