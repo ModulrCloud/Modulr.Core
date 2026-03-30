@@ -14,6 +14,9 @@ from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http.app import create_app
 from modulr_core.http.config_resolve import resolve_config_path
 
+# Directory containing this package (watch target for ``--reload``).
+_MODULR_CORE_PACKAGE_DIR = Path(__file__).resolve().parent
+
 
 def _tcp_bind_address_in_use(err: OSError) -> bool:
     if err.errno == errno.EADDRINUSE:
@@ -117,6 +120,15 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Debug: log each HTTP request and list routes at startup.",
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help=(
+            "Development only: restart when Python files under the modulr_core "
+            "package change. Install modulr-core[http] or uvicorn[standard] for "
+            "efficient file watching."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.verbose:
@@ -145,11 +157,14 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     _preflight_listen(args.host, args.port)
+    reload_dirs = [str(_MODULR_CORE_PACKAGE_DIR)] if args.reload else None
     uvicorn.run(
         app,
         host=args.host,
         port=args.port,
         log_level="debug" if args.verbose else "info",
+        reload=args.reload,
+        reload_dirs=reload_dirs,
     )
 
 
