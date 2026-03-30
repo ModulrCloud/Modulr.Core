@@ -89,8 +89,8 @@ export function MethodsMock() {
       try {
         const data = await executeGetProtocolVersion(base);
         setResult(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+      } catch (e: unknown) {
+        setError(formatClientError(e));
       } finally {
         setLoading(false);
       }
@@ -110,8 +110,8 @@ export function MethodsMock() {
           module_name: moduleName,
         });
         setResult(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+      } catch (e: unknown) {
+        setError(formatClientError(e));
       } finally {
         setLoading(false);
       }
@@ -131,8 +131,8 @@ export function MethodsMock() {
           module_id: moduleId,
         });
         setResult(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+      } catch (e: unknown) {
+        setError(formatClientError(e));
       } finally {
         setLoading(false);
       }
@@ -140,13 +140,18 @@ export function MethodsMock() {
     }
 
     setLoading(true);
-    await delay(420 + (selected.title.length * 7) % 200);
-    const payload: Record<string, string> = {};
-    for (const p of selected.params) {
-      payload[p.name] = values[p.name]?.trim() ?? "";
+    try {
+      await delay(420 + (selected.title.length * 7) % 200);
+      const payload: Record<string, string> = {};
+      for (const p of selected.params) {
+        payload[p.name] = values[p.name]?.trim() ?? "";
+      }
+      setResult(buildMockMethodResponse(selected.id, payload));
+    } catch (e: unknown) {
+      setError(formatClientError(e));
+    } finally {
+      setLoading(false);
     }
-    setResult(buildMockMethodResponse(selected.id, payload));
-    setLoading(false);
   }, [selected, values, settings.coreEndpoints]);
 
   const safeExecute = useCallback(() => {

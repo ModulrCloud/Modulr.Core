@@ -41,11 +41,16 @@ export function useMockAvailability(
     const key = debounced;
     let cancelled = false;
     setStatus("checking");
-    void mockCheckRegistrationKeyAvailable(kind, key).then((ok) => {
-      if (cancelled) return;
-      if (normRef.current !== key || debRef.current !== key) return;
-      setStatus(ok ? "available" : "taken");
-    });
+    void mockCheckRegistrationKeyAvailable(kind, key)
+      .then((ok) => {
+        if (cancelled) return;
+        if (normRef.current !== key || debRef.current !== key) return;
+        setStatus(ok ? "available" : "taken");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStatus("taken");
+      });
     return () => {
       cancelled = true;
     };
