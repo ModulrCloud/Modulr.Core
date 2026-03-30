@@ -1,6 +1,8 @@
 /** Apply light/dark tokens to CSS custom properties. */
 
 const ACCENT = "#ffb700";
+/** Legible on Modulr gold buttons and chips in both themes */
+const ACCENT_CONTRAST = "#111218";
 
 /** Dark base from brand (#10131A); slightly lifted secondary for gradients. */
 const DARK_PAGE = "#10131A";
@@ -40,6 +42,7 @@ export function applyColorModeToDocument(colorMode: "dark" | "light"): void {
   root.style.setProperty("--modulr-text", text);
   root.style.setProperty("--modulr-text-muted", muted);
   root.style.setProperty("--modulr-accent", ACCENT);
+  root.style.setProperty("--modulr-accent-contrast", ACCENT_CONTRAST);
   root.style.setProperty("--modulr-glass-fill", glassFill);
   root.style.setProperty("--modulr-glass-panel-fill", glassPanelFill);
   root.style.setProperty("--modulr-glass-border", glassBorder);

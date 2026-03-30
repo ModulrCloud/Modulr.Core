@@ -130,9 +130,9 @@ export function BrickField({
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-    let ball = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_R };
+    const ball = { x: 0, y: 0, vx: 0, vy: 0, r: BALL_R };
     /** Vertical paddle: narrow w (x extent), tall h (y extent), center (x,y). */
-    let paddle = { x: 0, y: 0, w: PADDLE_THICK, h: PADDLE_LEN_MIN };
+    const paddle = { x: 0, y: 0, w: PADDLE_THICK, h: PADDLE_LEN_MIN };
     let bricks: Brick[] = [];
     let aimJitter = 0;
     let aimJitterTarget = 0;

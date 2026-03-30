@@ -48,6 +48,8 @@
   --modulr-text: #e9eaef;
   --modulr-text-muted: #9aa0b0;
   --modulr-accent: #ffb700;
+  /** Text / icons on solid accent fills (gold) — dark for WCAG contrast */
+  --modulr-accent-contrast: #111218;
   --modulr-glass-fill: rgba(22, 25, 36, 0.22);
   --modulr-glass-panel-fill: rgba(22, 25, 36, 0.1);
   --modulr-glass-border: rgba(255, 255, 255, 0.1);

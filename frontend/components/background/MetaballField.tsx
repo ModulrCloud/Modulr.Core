@@ -68,7 +68,7 @@ function dist(a: Ball, b: Ball): number {
 }
 
 function enforceSpeedBand(b: Ball) {
-  let s = Math.hypot(b.vx, b.vy);
+  const s = Math.hypot(b.vx, b.vy);
   if (s < 1e-5) {
     const ang = Math.random() * Math.PI * 2;
     const sp = SPEED_FLOOR + Math.random() * (SPEED_CEILING - SPEED_FLOOR) * 0.35;
@@ -501,7 +501,9 @@ export function MetaballField({
       ballsRef.current = balls;
 
       drawField(ctx, gw, gh, balls, now);
-      raf.current = requestAnimationFrame(frame);
+      if (animate) {
+        raf.current = requestAnimationFrame(frame);
+      }
     }
 
     lastTick.current = performance.now();
