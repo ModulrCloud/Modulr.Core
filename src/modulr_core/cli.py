@@ -16,11 +16,37 @@ from modulr_core.http.config_resolve import resolve_config_path
 
 
 def _preflight_listen(host: str, port: int) -> None:
-    """Fail fast with a clear message if the TCP port is already bound."""
+    """Fail fast with a clear message if the TCP port is already bound.
+
+    Resolves ``host`` with :func:`socket.getaddrinfo` so IPv6 (e.g. ``::1``) and
+    hostnames behave like :func:`uvicorn.run`, instead of assuming IPv4 only.
+    """
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        infos = socket.getaddrinfo(
+            host,
+            port,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+    except socket.gaierror as e:
+        print(
+            f"error: cannot resolve --host {host!r}: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not infos:
+        print(
+            f"error: no TCP address for {host!r}:{port}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    family, socktype, proto, _canon, sockaddr = infos[0]
+    try:
+        with socket.socket(family, socktype, proto) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((host, port))
+            sock.bind(sockaddr)
     except OSError as e:
         in_use = e.errno == errno.EADDRINUSE
         if sys.platform == "win32" and getattr(e, "winerror", None) == 10048:

@@ -4,8 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
-import { executeGetProtocolVersion } from "@/lib/coreApi";
+import { executeGetProtocolVersion, executeSignedCoreOperation } from "@/lib/coreApi";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
+import { formatClientError } from "@/lib/formatClientError";
 
 import {
   buildMockMethodResponse,
@@ -19,6 +20,18 @@ const fieldClass =
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+const LIVE_SIGNED_METHOD_IDS = new Set<string>(["get_protocol_version", "lookup_module"]);
+
+function liveExecuteHint(methodId: string): string {
+  if (methodId === "get_protocol_version") {
+    return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
+  }
+  if (methodId === "lookup_module") {
+    return "Same signing path. The module must already be registered or Core returns MODULE_NOT_FOUND.";
+  }
+  return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
 
 export function MethodsMock() {
@@ -77,6 +90,27 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "lookup_module") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleName = values.module_name?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "lookup_module", {
+          module_name: moduleName,
+        });
+        setResult(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     await delay(420 + (selected.title.length * 7) % 200);
     const payload: Record<string, string> = {};
@@ -86,6 +120,13 @@ export function MethodsMock() {
     setResult(buildMockMethodResponse(selected.id, payload));
     setLoading(false);
   }, [selected, values, settings.coreEndpoints]);
+
+  const safeExecute = useCallback(() => {
+    void runExecute().catch((e: unknown) => {
+      setError(formatClientError(e));
+      setLoading(false);
+    });
+  }, [runExecute]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -105,8 +146,10 @@ export function MethodsMock() {
           (no signed envelope from this UI).
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
-          <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span> runs
-          against your configured Core (signed <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
+          <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span> and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">lookup_module</span> call your
+          configured Core (signed{" "}
+          <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
           ). Other operations still use mock responses until wired.
         </p>
       </GlassPanel>
@@ -139,11 +182,12 @@ export function MethodsMock() {
             method={selected}
             values={values}
             onChange={setParam}
-            onExecute={runExecute}
+            onExecute={safeExecute}
             loading={loading}
             error={error}
             result={result}
-            liveSigned={selected.id === "get_protocol_version"}
+            liveSigned={LIVE_SIGNED_METHOD_IDS.has(selected.id)}
+            liveHint={liveExecuteHint(selected.id)}
           />
         </div>
       </div>
@@ -160,6 +204,7 @@ function MethodPanel({
   error,
   result,
   liveSigned,
+  liveHint,
 }: {
   method: MethodDef;
   values: Record<string, string>;
@@ -169,6 +214,7 @@ function MethodPanel({
   error: string | null;
   result: Record<string, unknown> | null;
   liveSigned: boolean;
+  liveHint: string;
 }) {
   return (
     <GlassPanel className="p-6 sm:p-8">
@@ -195,7 +241,7 @@ function MethodPanel({
           Parameters
         </p>
         {method.params.length === 0 ? (
-          <p className="modulr-text-muted mt-3 text-sm">No parameters — call is nullary in this mock.</p>
+          <p className="modulr-text-muted mt-3 text-sm">No parameters for this operation.</p>
         ) : (
           <div className="mt-4 space-y-4">
             {method.params.map((p) => (
@@ -257,9 +303,7 @@ function MethodPanel({
             {loading ? "Executing…" : liveSigned ? "Execute" : "Execute (mock)"}
           </button>
           <span className="text-xs text-[var(--modulr-text-muted)]">
-            {liveSigned
-              ? "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly)."
-              : "Simulates round-trip delay; response is deterministic from your inputs."}
+            {liveSigned ? liveHint : "Simulates round-trip delay; response is deterministic from your inputs."}
           </span>
         </div>
       </div>
