@@ -27,3 +27,7 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      - name: Frontend install and build
+        working-directory: frontend
+        run: npm ci && npm run build

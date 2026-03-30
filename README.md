@@ -230,6 +230,18 @@ pytest
 
 The importable package is **`modulr_core`**; the protocol module name on the wire remains **`modulr.core`**.
 
+### Customer web UI (stage 1)
+
+A **Next.js** app in **`frontend/`** is the customer-facing shell (theme blend, glass layout, firefly/gradient backgrounds, settings for Modulr.Core URLs). It is kept beside Core for convenience and is expected to move to its own repository later.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Details: **`frontend/README.md`**. Phased product plan: **`plan/customer_web_interface.md`**.
+
 ---
 
 ## License
