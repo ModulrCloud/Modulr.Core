@@ -3,12 +3,36 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import logging
+import os
+import socket
 import sys
 from pathlib import Path
 
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http.app import create_app
 from modulr_core.http.config_resolve import resolve_config_path
+
+
+def _preflight_listen(host: str, port: int) -> None:
+    """Fail fast with a clear message if the TCP port is already bound."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+    except OSError as e:
+        in_use = e.errno == errno.EADDRINUSE
+        if sys.platform == "win32" and getattr(e, "winerror", None) == 10048:
+            in_use = True
+        if in_use:
+            print(
+                f"error: cannot bind to {host}:{port} (address already in use). "
+                f"Stop the other process or pass a different --port.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        raise
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -25,7 +49,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Debug: log each HTTP request and list routes at startup.",
+    )
     args = parser.parse_args(argv)
+
+    if args.verbose:
+        os.environ["MODULR_CORE_VERBOSE"] = "1"
+        logging.getLogger("modulr_core").setLevel(logging.DEBUG)
 
     try:
         path = resolve_config_path(args.config)
@@ -48,7 +82,13 @@ def main(argv: list[str] | None = None) -> None:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    _preflight_listen(args.host, args.port)
+    uvicorn.run(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level="debug" if args.verbose else "info",
+    )
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import { AnimatedBackground } from "@/components/background/AnimatedBackground";
 import { IconGear } from "@/components/icons";
 import { useAppUi } from "@/components/providers/AppProviders";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
+import { useCoreVersion } from "@/hooks/useCoreVersion";
 
 import { BrandMark } from "./BrandMark";
 import { ThemeModeSwitch } from "./ThemeModeSwitch";
@@ -14,6 +15,7 @@ import { ThemeModeSwitch } from "./ThemeModeSwitch";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { setSettingsOpen } = useAppUi();
   const pathname = usePathname();
+  const coreVersion = useCoreVersion();
 
   const chromeBtn =
     "modulr-glass-surface flex size-11 items-center justify-center rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-[var(--modulr-text)] shadow-lg transition-[border-color,color,box-shadow] duration-200 hover:border-[var(--modulr-accent)]/50 hover:text-[var(--modulr-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--modulr-accent)]";
@@ -45,8 +47,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="modulr-text text-xs font-semibold leading-tight sm:text-sm">
                     Modulr.Core
                   </span>
-                  <span className="modulr-text-muted text-[10px] font-medium leading-tight tracking-wide">
-                    V.
+                  <span
+                    className="modulr-text-muted text-[10px] font-medium leading-tight tracking-wide"
+                    title={
+                      coreVersion.kind === "error"
+                        ? coreVersion.message
+                        : "Wire version from Core GET /version"
+                    }
+                  >
+                    {coreVersion.kind === "loading"
+                      ? "v…"
+                      : coreVersion.kind === "ok"
+                        ? `v${coreVersion.version}`
+                        : "unreachable"}
                   </span>
                 </div>
               </Link>

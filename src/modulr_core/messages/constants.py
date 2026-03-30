@@ -7,6 +7,7 @@ from modulr_core.version import MODULE_VERSION
 TARGET_MODULE_CORE = "modulr.core"
 
 CORE_OPERATIONS = frozenset({
+    "get_protocol_version",
     "register_module",
     "lookup_module",
     "register_name",

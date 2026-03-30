@@ -284,3 +284,58 @@ def test_playground_not_mounted_when_not_dev_mode() -> None:
     )
     client = TestClient(app)
     assert client.get("/playground/protocol-info").status_code == 404
+
+
+def test_get_version() -> None:
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.get("/version")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["target_module"] == "modulr.core"
+    assert data["version"] == MODULE_VERSION
+
+
+def test_post_message_get_protocol_version() -> None:
+    pk = Ed25519PrivateKey.generate()
+    body = _signed_body(
+        private_key=pk,
+        message_id="gpv-1",
+        operation="get_protocol_version",
+        payload={},
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.post("/message", content=body)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["code"] == str(SuccessCode.PROTOCOL_VERSION_RETURNED)
+    assert data["payload"]["protocol_version"] == MODULE_VERSION
+
+
+def test_post_message_get_protocol_version_rejects_non_empty_payload() -> None:
+    pk = Ed25519PrivateKey.generate()
+    body = _signed_body(
+        private_key=pk,
+        message_id="gpv-2",
+        operation="get_protocol_version",
+        payload={"extra": "nope"},
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.post("/message", content=body)
+    assert r.status_code == 400
+    assert r.json()["code"] == ErrorCode.PAYLOAD_INVALID

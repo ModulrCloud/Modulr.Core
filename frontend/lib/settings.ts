@@ -8,9 +8,6 @@ export type BackgroundPreset =
   | "brick"
   | "gradient";
 
-/** `system` = follow OS; `full` = animations on; `reduced` = static/minimal. */
-export type MotionMode = "system" | "full" | "reduced";
-
 export type ColorMode = "dark" | "light";
 
 export type AppSettings = {
@@ -19,7 +16,6 @@ export type AppSettings = {
   colorMode: ColorMode;
   backgroundEnabled: boolean;
   backgroundPreset: BackgroundPreset;
-  motionMode: MotionMode;
 };
 
 export const SETTINGS_STORAGE_KEY = "modulr.customer-ui.settings";
@@ -29,7 +25,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   colorMode: "dark",
   backgroundEnabled: true,
   backgroundPreset: "fireflies",
-  motionMode: "system",
 };
 
 export function normalizeSettings(raw: unknown): AppSettings {
@@ -67,17 +62,11 @@ export function normalizeSettings(raw: unknown): AppSettings {
   ) {
     backgroundPreset = preset;
   }
-  const mm = o.motionMode;
-  const motionMode: MotionMode =
-    mm === "system" || mm === "full" || mm === "reduced"
-      ? mm
-      : DEFAULT_SETTINGS.motionMode;
   return {
     coreEndpoints: coreEndpoints.length ? coreEndpoints : [...DEFAULT_SETTINGS.coreEndpoints],
     colorMode,
     backgroundEnabled,
     backgroundPreset,
-    motionMode,
   };
 }
 

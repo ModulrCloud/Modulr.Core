@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import type { MotionMode } from "@/lib/settings";
+/** `system` = follow OS; `full` / `reduced` reserved for future UI if needed. */
+export type MotionMode = "system" | "full" | "reduced";
 
 /**
  * Whether decorative motion should run (fireflies, etc.).

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 from collections.abc import AsyncIterator
@@ -11,8 +12,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Mount
 
 from modulr_core.clock import EpochClock, now_epoch_seconds
 from modulr_core.config.load import load_settings
@@ -31,6 +35,43 @@ from modulr_core.repositories.message_dedup import MessageDedupRepository
 from modulr_core.version import MODULE_VERSION
 
 logger = logging.getLogger(__name__)
+
+
+def _verbose_http_env() -> bool:
+    return os.environ.get("MODULR_CORE_VERBOSE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _log_registered_routes(app: FastAPI) -> None:
+    lines: list[str] = []
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            methods = ",".join(sorted(route.methods))
+            lines.append(f"  {methods} {route.path}")
+        elif isinstance(route, Mount):
+            lines.append(f"  [mount] {route.path}")
+    text = "\n".join(lines) if lines else "  (none)"
+    logger.info("modulr-core verbose: registered routes:\n%s", text)
+
+
+def _cors_allow_origins(settings: Settings) -> list[str]:
+    """Origins allowed for browser clients (customer UI, etc.).
+
+    Set :envvar:`MODULR_CORE_CORS_ORIGINS` to a comma-separated list to override.
+    In ``dev_mode`` with no env override, local Next.js defaults are used.
+    """
+    raw = os.environ.get("MODULR_CORE_CORS_ORIGINS", "").strip()
+    if raw:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    if settings.dev_mode:
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    return []
 
 
 def create_app(
@@ -61,6 +102,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if _verbose_http_env():
+            _log_registered_routes(app)
         yield
         if owns_conn:
             conn.close()
@@ -71,6 +114,24 @@ def create_app(
     app.state._owns_conn = owns_conn  # noqa: SLF001
     app.state.conn_lock = threading.Lock()
     app.state.clock = clock or now_epoch_seconds
+
+    cors_origins = _cors_allow_origins(settings)
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
+
+    @app.get("/version")
+    async def get_version() -> dict[str, str]:
+        """Read-only metadata for connectivity checks (no signed envelope)."""
+        return {
+            "target_module": TARGET_MODULE_CORE,
+            "version": MODULE_VERSION,
+        }
 
     @app.post("/message")
     async def post_message(request: Request) -> Response:
@@ -191,5 +252,39 @@ def create_app(
             StaticFiles(directory=str(playground_dir), html=True),
             name="playground",
         )
+
+    if _verbose_http_env():
+
+        @app.middleware("http")
+        async def _verbose_request_log(request: Request, call_next):
+            q = request.url.query
+            path = request.url.path
+            qs = f"?{q}" if q else ""
+            logger.info(
+                "http <- %s %s%s origin=%r",
+                request.method,
+                path,
+                qs,
+                request.headers.get("origin"),
+            )
+            cl = request.headers.get("content-length")
+            if cl:
+                logger.info("http <- content-length=%s", cl)
+            response = await call_next(request)
+            logger.info(
+                "http -> %s %s status=%s",
+                request.method,
+                path,
+                response.status_code,
+            )
+            if response.status_code == 404:
+                logger.warning(
+                    "404 on %s %r — no route matched. If you expected GET /version, "
+                    "restart modulr-core (or run pip install -e .) so the running "
+                    "process loads the current code.",
+                    request.method,
+                    path,
+                )
+            return response
 
     return app

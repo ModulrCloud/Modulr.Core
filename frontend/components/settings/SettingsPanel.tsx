@@ -6,7 +6,7 @@ import {
   ModulrSelect,
   type ModulrSelectOption,
 } from "@/components/ui/ModulrSelect";
-import type { AppSettings, BackgroundPreset, MotionMode } from "@/lib/settings";
+import type { AppSettings, BackgroundPreset } from "@/lib/settings";
 
 const BACKGROUND_PRESET_OPTIONS: ModulrSelectOption[] = [
   { value: "fireflies", label: "Fireflies" },
@@ -15,12 +15,6 @@ const BACKGROUND_PRESET_OPTIONS: ModulrSelectOption[] = [
   { value: "life", label: "Game of Life" },
   { value: "brick", label: "Brick" },
   { value: "gradient", label: "Gradient only" },
-];
-
-const MOTION_MODE_OPTIONS: ModulrSelectOption[] = [
-  { value: "system", label: "Match system setting" },
-  { value: "full", label: "Always animate backgrounds" },
-  { value: "reduced", label: "Reduce motion (static)" },
 ];
 
 function labelCls() {
@@ -58,16 +52,6 @@ export function SettingsPanel() {
       ...s,
       coreEndpoints: s.coreEndpoints.filter((_, j) => j !== i),
     }));
-  }
-
-  function moveEndpoint(i: number, dir: -1 | 1) {
-    setSettings((s) => {
-      const j = i + dir;
-      if (j < 0 || j >= s.coreEndpoints.length) return s;
-      const next = [...s.coreEndpoints];
-      [next[i], next[j]] = [next[j], next[i]];
-      return { ...s, coreEndpoints: next };
-    });
   }
 
   return (
@@ -158,7 +142,8 @@ export function SettingsPanel() {
               Core endpoints
             </h3>
             <p className="mb-3 text-xs text-[var(--modulr-text-muted)]">
-              Order is priority for future requests. Local dev often uses{" "}
+              The first URL is used for connectivity checks (stage 2+). Local dev
+              often uses{" "}
               <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">
                 http://127.0.0.1:8000
               </code>
@@ -174,24 +159,6 @@ export function SettingsPanel() {
                     placeholder="https://core.example.com"
                     aria-label={`Core endpoint ${i + 1}`}
                   />
-                  <div className="flex shrink-0 flex-col gap-1">
-                    <button
-                      type="button"
-                      className="rounded border border-[var(--modulr-glass-border)] px-2 py-0.5 text-xs text-[var(--modulr-text)] hover:bg-[var(--modulr-glass-highlight)] disabled:opacity-30"
-                      disabled={i === 0}
-                      onClick={() => moveEndpoint(i, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded border border-[var(--modulr-glass-border)] px-2 py-0.5 text-xs text-[var(--modulr-text)] hover:bg-[var(--modulr-glass-highlight)] disabled:opacity-30"
-                      disabled={i === settings.coreEndpoints.length - 1}
-                      onClick={() => moveEndpoint(i, 1)}
-                    >
-                      ↓
-                    </button>
-                  </div>
                   <button
                     type="button"
                     className="shrink-0 rounded-lg border border-red-500/40 px-2 text-sm text-red-600 hover:bg-red-500/10"
@@ -255,23 +222,9 @@ export function SettingsPanel() {
               <span className="font-medium text-[var(--modulr-text)]">
                 Circuit
               </span>{" "}
-              background — coming soon.
+              background — coming soon. Decorative motion follows your OS{" "}
+              <span className="whitespace-nowrap">“reduce motion”</span> setting.
             </p>
-          </section>
-
-          <section>
-            <h3 className="font-modulr-display mb-3 text-sm font-bold text-[var(--modulr-accent)]">
-              Motion
-            </h3>
-            <label className={`${labelCls()}`} htmlFor="motion-mode">
-              Respect system reduced motion, or override
-            </label>
-            <ModulrSelect
-              id="motion-mode"
-              value={settings.motionMode}
-              onChange={(v) => update("motionMode", v as MotionMode)}
-              options={MOTION_MODE_OPTIONS}
-            />
           </section>
         </div>
       </aside>

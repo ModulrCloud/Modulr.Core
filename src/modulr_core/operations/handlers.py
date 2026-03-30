@@ -35,11 +35,38 @@ from modulr_core.validation.names import (
     validate_modulr_resolve_name,
     validate_resolved_id,
 )
+from modulr_core.version import MODULE_VERSION
 
 _MODULE_NAME_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
 )
 _MAX_METRICS_CANONICAL_BYTES = 65_536
+
+
+def handle_get_protocol_version(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Return the wire protocol version Core accepts (inbound ``protocol_version``)."""
+    del settings, conn
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    if p:
+        raise WireValidationError(
+            "get_protocol_version expects an empty payload object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_protocol_version_response",
+        success_code=SuccessCode.PROTOCOL_VERSION_RETURNED,
+        detail="Protocol version.",
+        payload={"protocol_version": MODULE_VERSION},
+        clock=clock,
+    )
 
 
 def handle_register_module(
