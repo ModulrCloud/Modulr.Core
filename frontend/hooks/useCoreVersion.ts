@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAppUi } from "@/components/providers/AppProviders";
 import { fetchCoreVersion } from "@/lib/coreApi";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
+import { formatClientError } from "@/lib/formatClientError";
 
 export type CoreVersionState =
   | { kind: "loading" }
@@ -33,7 +34,7 @@ export function useCoreVersion(): CoreVersionState {
         if (!cancelled) {
           setState({
             kind: "error",
-            message: e instanceof Error ? e.message : "Unreachable",
+            message: formatClientError(e),
           });
         }
       });

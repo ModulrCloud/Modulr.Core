@@ -78,7 +78,16 @@ export async function postSignedCoreOperation(
   return data;
 }
 
-export async function executeGetProtocolVersion(baseUrl: string): Promise<Record<string, unknown>> {
+/** Fetch wire `protocol_version` then run a signed `POST /message` (shared by live Methods). */
+export async function executeSignedCoreOperation(
+  baseUrl: string,
+  operation: string,
+  payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   const { version } = await fetchCoreVersion(baseUrl);
-  return postSignedCoreOperation(baseUrl, version, "get_protocol_version", {});
+  return postSignedCoreOperation(baseUrl, version, operation, payload);
+}
+
+export async function executeGetProtocolVersion(baseUrl: string): Promise<Record<string, unknown>> {
+  return executeSignedCoreOperation(baseUrl, "get_protocol_version", {});
 }

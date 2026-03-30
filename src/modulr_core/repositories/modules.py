@@ -44,7 +44,7 @@ class ModulesRepository:
 
     def get_by_name(self, module_name: str) -> dict[str, Any] | None:
         cur = self._conn.execute(
-            "SELECT * FROM modules WHERE module_name = ?",
+            "SELECT * FROM modules WHERE lower(module_name) = lower(?)",
             (module_name,),
         )
         row = cur.fetchone()
@@ -52,7 +52,7 @@ class ModulesRepository:
 
     def exists(self, module_name: str) -> bool:
         cur = self._conn.execute(
-            "SELECT 1 FROM modules WHERE module_name = ?",
+            "SELECT 1 FROM modules WHERE lower(module_name) = lower(?)",
             (module_name,),
         )
         return cur.fetchone() is not None

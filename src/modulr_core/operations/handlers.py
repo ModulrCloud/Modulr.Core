@@ -20,6 +20,11 @@ from modulr_core.operations.authorize import (
     require_bootstrap_sender,
     require_bootstrap_to_register_module,
 )
+from modulr_core.operations.module_names import (
+    BUILTIN_CORE_SIGNING_PUBLIC_KEY_HEX,
+    CANONICAL_CORE_MODULE_NAME,
+    normalize_module_name,
+)
 from modulr_core.operations.payload_util import (
     optional_dict,
     optional_json_value,
@@ -41,6 +46,39 @@ _MODULE_NAME_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
 )
 _MAX_METRICS_CANONICAL_BYTES = 65_536
+
+
+def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") -> str:
+    """Strip, validate dotted form, return lowercase canonical ``module_name``."""
+    raw = require_str(p, field).strip()
+    if not raw:
+        raise WireValidationError(
+            "module_name must not be empty",
+            code=ErrorCode.INVALID_MODULE_NAME,
+        )
+    if not _MODULE_NAME_RE.match(raw):
+        raise WireValidationError(
+            "module_name must be a dotted logical name (e.g. modulr.storage)",
+            code=ErrorCode.INVALID_MODULE_NAME,
+        )
+    return normalize_module_name(raw)
+
+
+def _builtin_core_lookup_payload(*, clock: EpochClock) -> dict[str, Any]:
+    """Synthetic ``lookup_module`` row for the running Core (not in ``modules``)."""
+    return {
+        "module_name": CANONICAL_CORE_MODULE_NAME,
+        "module_version": MODULE_VERSION,
+        "route": {
+            "kind": "modulr.core",
+            "note": "Built-in coordination plane; not stored in modules table.",
+        },
+        "capabilities": None,
+        "metadata": {"builtin": True},
+        "signing_public_key": BUILTIN_CORE_SIGNING_PUBLIC_KEY_HEX,
+        "registered_by_sender_id": "modulr:network:core",
+        "registered_at": int(clock()),
+    }
 
 
 def handle_get_protocol_version(
@@ -82,11 +120,11 @@ def handle_register_module(
         sender_public_key_hex=env["sender_public_key"],
     )
     p: dict[str, Any] = env["payload"]
-    module_name = require_str(p, "module_name")
-    if not _MODULE_NAME_RE.match(module_name):
+    module_name = _parse_wire_module_name(p)
+    if module_name == CANONICAL_CORE_MODULE_NAME:
         raise WireValidationError(
-            "module_name must be a dotted logical name (e.g. modulr.storage)",
-            code=ErrorCode.INVALID_MODULE_NAME,
+            f"{CANONICAL_CORE_MODULE_NAME!r} is reserved and cannot be registered",
+            code=ErrorCode.MODULE_NAME_RESERVED,
         )
     module_version = require_str(p, "module_version")
     route = require_dict(p, "route")
@@ -192,11 +230,16 @@ def handle_lookup_module(
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
-    module_name = require_str(p, "module_name")
-    if not _MODULE_NAME_RE.match(module_name):
-        raise WireValidationError(
-            "module_name must be a dotted logical name",
-            code=ErrorCode.INVALID_MODULE_NAME,
+    module_name = _parse_wire_module_name(p)
+    if module_name == CANONICAL_CORE_MODULE_NAME:
+        out_payload = _builtin_core_lookup_payload(clock=clock)
+        return success_response_envelope(
+            request_message_id=env["message_id"],
+            operation_response="lookup_module_response",
+            success_code=SuccessCode.MODULE_FOUND,
+            detail="Module found.",
+            payload=out_payload,
+            clock=clock,
         )
     row = ModulesRepository(conn).get_by_name(module_name)
     if row is None:
@@ -517,12 +560,7 @@ def handle_heartbeat_update(
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
-    module_name = require_str(p, "module_name")
-    if not _MODULE_NAME_RE.match(module_name):
-        raise WireValidationError(
-            "module_name must be a dotted logical name",
-            code=ErrorCode.INVALID_MODULE_NAME,
-        )
+    module_name = _parse_wire_module_name(p)
     module_version = require_str(p, "module_version")
     status = require_str(p, "status")
     route = optional_dict(p, "route")
@@ -580,8 +618,9 @@ def handle_heartbeat_update(
             code=ErrorCode.IDENTITY_MISMATCH,
         )
 
+    canonical_name = str(mod_row["module_name"])
     HeartbeatRepository(conn).upsert(
-        module_name=module_name,
+        module_name=canonical_name,
         module_version=module_version,
         status=status,
         route_json=route_json,
@@ -589,7 +628,7 @@ def handle_heartbeat_update(
         last_seen_at=last_seen_at,
     )
     out_payload = {
-        "module_name": module_name,
+        "module_name": canonical_name,
         "module_version": module_version,
         "status": status,
         "last_seen_at": last_seen_at,

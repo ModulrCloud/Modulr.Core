@@ -84,6 +84,76 @@ def make_validated_inbound(
     )
 
 
+def test_lookup_builtin_modulr_core_case_insensitive() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    for name in ("modulr.core", "Modulr.Core", "MODULR.CORE"):
+        lu = make_validated_inbound(
+            pk,
+            "lookup_module",
+            {"module_name": name},
+            f"m-{name}",
+        )
+        out = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 1.0)
+        assert out["code"] == str(SuccessCode.MODULE_FOUND)
+        assert out["payload"]["module_name"] == "modulr.core"
+        assert out["payload"]["metadata"] == {"builtin": True}
+
+
+def test_register_modulr_core_reserved() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    for name in ("modulr.core", "Modulr.Core"):
+        reg = make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": name,
+                "module_version": MODULE_VERSION,
+                "route": {},
+                "signing_public_key": sender_pub.hex(),
+            },
+            f"reg-{name}",
+        )
+        with pytest.raises(WireValidationError) as ei:
+            dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+        assert ei.value.code is ErrorCode.MODULE_NAME_RESERVED
+
+
+def test_lookup_module_case_insensitive_after_register() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "Modulr.Playground",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://p.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "m1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    lu = make_validated_inbound(
+        pk,
+        "lookup_module",
+        {"module_name": "modulr.playground"},
+        "m2",
+    )
+    out = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_FOUND)
+    assert out["payload"]["module_name"] == "modulr.playground"
+
+
 def test_register_and_lookup_module() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

@@ -2,7 +2,7 @@
 
 Next.js shell: glass layout, **`#ffb700`** accent, dark default background **`#10131A`**, animated background presets (fireflies), **dark/light switch** (dark first), and settings (Core URLs). Optional logo: add **`public/modulr-logo.svg`** (see `public/branding/README.md`). Full roadmap: `plan/customer_web_interface.md`.
 
-With Core running (e.g. `modulr-core --config dev.toml` on port **8000**), the header loads **`GET /version`** for the live `v…` label. **Methods → get_protocol_version** calls the real **`POST /message`** path (canonical JSON + Ed25519, same rules as the dev playground). Core **`dev_mode`** enables CORS for **`http://localhost:3000`** and **`http://127.0.0.1:3000`**; override with env **`MODULR_CORE_CORS_ORIGINS`** (comma-separated).
+With Core running (e.g. `modulr-core --config dev.toml` on port **8000**), the header loads **`GET /version`** for the live `v…` label. **Methods** wires **`get_protocol_version`** and **`lookup_module`** to the real **`POST /message`** path (canonical JSON + Ed25519, same rules as the dev playground). Core **`dev_mode`** enables CORS for **`http://localhost:3000`** and **`http://127.0.0.1:3000`**; override with env **`MODULR_CORE_CORS_ORIGINS`** (comma-separated).
 
 ## Develop
 
