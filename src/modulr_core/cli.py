@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from modulr_core.config.load import load_settings
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http.app import create_app
 from modulr_core.http.config_resolve import resolve_config_path
@@ -162,8 +163,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
+    # With --reload, uvicorn supervises workers; skip create_app() in this process
+    # so the supervisor never holds an SQLite connection or runs migrations.
     try:
-        app = create_app(config_path=path)
+        if args.reload:
+            load_settings(path)
+        else:
+            app = create_app(config_path=path)
     except ConfigurationError as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
