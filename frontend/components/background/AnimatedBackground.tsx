@@ -11,7 +11,7 @@ import { MetaballField } from "./MetaballField";
 
 export function AnimatedBackground() {
   const { settings } = useAppUi();
-  const motionOk = useEffectiveMotion(settings.motionMode);
+  const motionOk = useEffectiveMotion("system");
 
   if (!settings.backgroundEnabled) {
     return (

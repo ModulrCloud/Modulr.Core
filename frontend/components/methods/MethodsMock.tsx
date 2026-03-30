@@ -2,7 +2,10 @@
 
 import { useCallback, useMemo, useState } from "react";
 
+import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
+import { executeGetProtocolVersion } from "@/lib/coreApi";
+import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 
 import {
   buildMockMethodResponse,
@@ -19,6 +22,7 @@ function delay(ms: number): Promise<void> {
 }
 
 export function MethodsMock() {
+  const { settings } = useAppUi();
   const [selectedId, setSelectedId] = useState(METHOD_CATALOG[0]!.id);
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -46,7 +50,7 @@ export function MethodsMock() {
     setValues(next);
   }, []);
 
-  const runMock = useCallback(async () => {
+  const runExecute = useCallback(async () => {
     setError(null);
     setResult(null);
     const missing = selected.params.filter((p) => p.required !== false && !values[p.name]?.trim());
@@ -54,6 +58,25 @@ export function MethodsMock() {
       setError(`Fill in: ${missing.map((m) => m.label).join(", ")}`);
       return;
     }
+
+    if (selected.id === "get_protocol_version") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      setLoading(true);
+      try {
+        const data = await executeGetProtocolVersion(base);
+        setResult(data);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     await delay(420 + (selected.title.length * 7) % 200);
     const payload: Record<string, string> = {};
@@ -62,7 +85,7 @@ export function MethodsMock() {
     }
     setResult(buildMockMethodResponse(selected.id, payload));
     setLoading(false);
-  }, [selected, values]);
+  }, [selected, values, settings.coreEndpoints]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -82,8 +105,9 @@ export function MethodsMock() {
           (no signed envelope from this UI).
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
-          Real traffic stays in the versioned, signed message format; this page is a friendly surface
-          for exploring what each call expects.
+          <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span> runs
+          against your configured Core (signed <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
+          ). Other operations still use mock responses until wired.
         </p>
       </GlassPanel>
 
@@ -115,10 +139,11 @@ export function MethodsMock() {
             method={selected}
             values={values}
             onChange={setParam}
-            onExecute={runMock}
+            onExecute={runExecute}
             loading={loading}
             error={error}
             result={result}
+            liveSigned={selected.id === "get_protocol_version"}
           />
         </div>
       </div>
@@ -134,6 +159,7 @@ function MethodPanel({
   loading,
   error,
   result,
+  liveSigned,
 }: {
   method: MethodDef;
   values: Record<string, string>;
@@ -142,6 +168,7 @@ function MethodPanel({
   loading: boolean;
   error: string | null;
   result: Record<string, unknown> | null;
+  liveSigned: boolean;
 }) {
   return (
     <GlassPanel className="p-6 sm:p-8">
@@ -152,8 +179,14 @@ function MethodPanel({
           </h2>
           <p className="modulr-text-muted mt-2 max-w-2xl text-sm leading-relaxed">{method.summary}</p>
         </div>
-        <span className="rounded-full border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] px-3 py-1 text-xs font-medium text-[var(--modulr-text-muted)]">
-          Mock execution
+        <span
+          className={`rounded-full border px-3 py-1 text-xs font-medium ${
+            liveSigned
+              ? "border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/12 text-[var(--modulr-accent)]"
+              : "border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-[var(--modulr-text-muted)]"
+          }`}
+        >
+          {liveSigned ? "Live · signed POST" : "Mock execution"}
         </span>
       </div>
 
@@ -221,10 +254,12 @@ function MethodPanel({
             disabled={loading}
             className="rounded-lg bg-[var(--modulr-accent)] px-5 py-2.5 text-sm font-semibold text-[var(--modulr-accent-contrast)] shadow-md transition-opacity hover:opacity-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--modulr-accent)] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {loading ? "Executing…" : "Execute (mock)"}
+            {loading ? "Executing…" : liveSigned ? "Execute" : "Execute (mock)"}
           </button>
           <span className="text-xs text-[var(--modulr-text-muted)]">
-            Simulates round-trip delay; response is deterministic from your inputs.
+            {liveSigned
+              ? "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly)."
+              : "Simulates round-trip delay; response is deterministic from your inputs."}
           </span>
         </div>
       </div>

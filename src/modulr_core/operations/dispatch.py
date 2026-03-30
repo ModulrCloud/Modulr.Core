@@ -11,6 +11,7 @@ from modulr_core.errors.codes import ErrorCode
 from modulr_core.errors.exceptions import WireValidationError
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.handlers import (
+    handle_get_protocol_version,
     handle_heartbeat_update,
     handle_lookup_module,
     handle_register_module,
@@ -21,6 +22,7 @@ from modulr_core.operations.handlers import (
 )
 
 _HANDLERS = {
+    "get_protocol_version": handle_get_protocol_version,
     "register_module": handle_register_module,
     "lookup_module": handle_lookup_module,
     "register_name": handle_register_name,

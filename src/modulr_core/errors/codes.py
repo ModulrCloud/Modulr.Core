@@ -64,6 +64,7 @@ class ErrorCode(StrEnum):
 class SuccessCode(StrEnum):
     """Success `code` values for MVP operations."""
 
+    PROTOCOL_VERSION_RETURNED = "PROTOCOL_VERSION_RETURNED"
     MODULE_REGISTERED = "MODULE_REGISTERED"
     MODULE_FOUND = "MODULE_FOUND"
     NAME_RESOLVED = "NAME_RESOLVED"

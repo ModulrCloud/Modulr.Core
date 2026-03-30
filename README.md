@@ -230,6 +230,23 @@ pytest
 
 The importable package is **`modulr_core`**; the protocol module name on the wire remains **`modulr.core`**.
 
+### Run the HTTP server (local)
+
+The **`modulr-core`** command only works after the package is installed into your venv. From the **repository root** (with `.venv` activated):
+
+```powershell
+pip install -e ".[dev]"
+modulr-core --config dev.toml
+```
+
+Use **`modulr-core -v --config dev.toml`** when you want each request logged (method, path, `Origin`, status) plus a startup list of routes. **`GET /version` returning 404** almost always means the server process is still on **old code** — stop it and start again (and run **`pip install -e ".[dev]"`** if you pulled changes).
+
+Defaults: **`127.0.0.1:8000`**. Override with `--host` / `--port`. If you see **`ModuleNotFoundError: No module named 'modulr_core'`**, the editable install is missing or the venv is wrong — run **`pip install -e ".[dev]"`** again from this repo’s root.
+
+A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE_CONFIG`** to a TOML path. If the port is already taken, the CLI exits with a short error before starting uvicorn.
+
+**Read-only:** **`GET /version`** returns JSON `target_module` and `version` (for UI connectivity). In **`dev_mode`**, CORS allows the local customer UI origins unless **`MODULR_CORE_CORS_ORIGINS`** is set (comma-separated list).
+
 ### Customer web UI (stage 1)
 
 A **Next.js** app in **`frontend/`** is the customer-facing shell (theme blend, glass layout, firefly/gradient backgrounds, settings for Modulr.Core URLs). It is kept beside Core for convenience and is expected to move to its own repository later.
