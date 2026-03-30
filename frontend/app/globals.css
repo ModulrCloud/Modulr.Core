@@ -1,0 +1,303 @@
+@import "tailwindcss";
+
+/* Enable smooth interpolation when JS updates these on `:root`. */
+@property --modulr-page-bg {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10131a;
+}
+@property --modulr-page-bg-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #161b26;
+}
+@property --modulr-text {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e9eaef;
+}
+@property --modulr-text-muted {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #9aa0b0;
+}
+@property --modulr-glass-fill {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(22, 25, 36, 0.22);
+}
+@property --modulr-glass-panel-fill {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(22, 25, 36, 0.1);
+}
+@property --modulr-glass-border {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.1);
+}
+@property --modulr-glass-highlight {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(255, 255, 255, 0.06);
+}
+
+:root {
+  --modulr-page-bg: #10131a;
+  --modulr-page-bg-2: #161b26;
+  --modulr-text: #e9eaef;
+  --modulr-text-muted: #9aa0b0;
+  --modulr-accent: #ffb700;
+  /** Text / icons on solid accent fills (gold) — dark for WCAG contrast */
+  --modulr-accent-contrast: #111218;
+  --modulr-glass-fill: rgba(22, 25, 36, 0.22);
+  --modulr-glass-panel-fill: rgba(22, 25, 36, 0.1);
+  --modulr-glass-border: rgba(255, 255, 255, 0.1);
+  --modulr-glass-highlight: rgba(255, 255, 255, 0.06);
+  --modulr-theme-dark: 1;
+  --modulr-theme-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Page chrome, glass fill/border — keep a soft handoff */
+  --modulr-theme-duration: 0.5s;
+  /* Body + copy: snappy so theme toggles don’t feel sluggish */
+  --modulr-text-color-duration: 0.18s;
+  --modulr-glass-blur: 22px;
+  --modulr-glass-sat: 1.35;
+}
+
+@theme inline {
+  /* Inter: body, descriptions, UI copy (via font-sans) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: dark light;
+  transition: background-color var(--modulr-theme-duration) var(--modulr-theme-ease);
+  background-color: var(--modulr-page-bg);
+}
+
+/* Quantico: titles, headlines, key labels (apply class where needed) */
+.font-modulr-display {
+  font-family: var(--font-quantico), ui-sans-serif, sans-serif;
+}
+
+/**
+ * Explicit `color` + transition so text tracks `--modulr-text*` as fast as the shell.
+ * Inherited `color` from `body` alone can lag behind for some headings in WebKit.
+ */
+.modulr-text {
+  color: var(--modulr-text);
+  transition: color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+.modulr-text-muted {
+  color: var(--modulr-text-muted);
+  transition: color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--modulr-page-bg);
+  color: var(--modulr-text);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  transition:
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+/* Glass: lighter frost so background (e.g. fireflies) reads through; no `color` transition here — copy sets its own timing */
+.modulr-glass-surface {
+  -webkit-backdrop-filter: blur(var(--modulr-glass-blur)) saturate(var(--modulr-glass-sat));
+  backdrop-filter: blur(var(--modulr-glass-blur)) saturate(var(--modulr-glass-sat));
+  transition:
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    border-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    box-shadow var(--modulr-theme-duration) var(--modulr-theme-ease),
+    -webkit-backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease),
+    backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--modulr-accent) 35%, transparent);
+}
+
+/* ─── Aurora background preset (see AuroraLayer) ─────────────────────────── */
+.modulr-aurora-host {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+}
+
+/**
+ * Oversized plate + centered transform so `filter: blur()` isn’t clipped by the
+ * viewport (previous single-layer `overflow-hidden` hid the effect entirely).
+ */
+.modulr-aurora-plate {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  width: 140vw;
+  height: 140vh;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  -webkit-filter: blur(52px) saturate(1.25);
+  filter: blur(52px) saturate(1.25);
+  background-repeat: no-repeat;
+  background-size: 125% 120%, 130% 125%, 115% 118%;
+  background-position: 8% 12%, 92% 18%, 48% 88%;
+}
+
+.modulr-aurora-plate--dark {
+  opacity: 0.95;
+  background-image:
+    radial-gradient(ellipse 55% 45% at 24% 34%, rgba(255, 183, 0, 0.32), transparent 60%),
+    radial-gradient(ellipse 50% 42% at 82% 30%, rgba(120, 140, 245, 0.38), transparent 56%),
+    radial-gradient(ellipse 62% 52% at 50% 80%, rgba(50, 195, 175, 0.22), transparent 54%);
+}
+
+.modulr-aurora-plate--light {
+  opacity: 1;
+  -webkit-filter: blur(42px) saturate(1.2);
+  filter: blur(42px) saturate(1.2);
+  /* Deeper hues so blobs read on pale page bg */
+  background-image:
+    radial-gradient(ellipse 58% 48% at 22% 34%, rgba(200, 110, 0, 0.42), transparent 58%),
+    radial-gradient(ellipse 52% 44% at 78% 28%, rgba(45, 55, 145, 0.48), transparent 54%),
+    radial-gradient(ellipse 62% 52% at 50% 82%, rgba(15, 105, 95, 0.4), transparent 52%);
+}
+
+/* Motion: drift + oscillating hue/saturation so the aurora “breathes” color */
+.modulr-aurora-plate--dark.modulr-aurora-plate--motion {
+  animation: modulr-aurora-drift-dark 34s ease-in-out infinite alternate;
+}
+
+.modulr-aurora-plate--light.modulr-aurora-plate--motion {
+  animation: modulr-aurora-drift-light 30s ease-in-out infinite alternate;
+}
+
+.modulr-aurora-plate--static {
+  animation: none;
+}
+
+@keyframes modulr-aurora-drift-dark {
+  0% {
+    transform: translate(-50%, -50%) scale(1.04);
+    background-position: 8% 12%, 92% 18%, 48% 88%;
+    filter: blur(52px) saturate(1.2) hue-rotate(-14deg);
+  }
+  50% {
+    transform: translate(-48.5%, -51%) scale(1.08);
+    background-position: 14% 8%, 86% 24%, 54% 82%;
+    filter: blur(52px) saturate(1.55) hue-rotate(26deg);
+  }
+  100% {
+    transform: translate(-51.2%, -49%) scale(1.02);
+    background-position: 5% 16%, 95% 14%, 44% 90%;
+    filter: blur(52px) saturate(1.28) hue-rotate(-6deg);
+  }
+}
+
+@keyframes modulr-aurora-drift-light {
+  0% {
+    transform: translate(-50%, -50%) scale(1.03);
+    background-position: 10% 14%, 90% 20%, 46% 86%;
+    filter: blur(42px) saturate(1.15) hue-rotate(-12deg);
+  }
+  50% {
+    transform: translate(-49%, -50.5%) scale(1.07);
+    background-position: 16% 10%, 84% 26%, 52% 80%;
+    filter: blur(42px) saturate(1.5) hue-rotate(24deg);
+  }
+  100% {
+    transform: translate(-51%, -48.5%) scale(1.01);
+    background-position: 6% 18%, 94% 16%, 44% 88%;
+    filter: blur(42px) saturate(1.22) hue-rotate(-4deg);
+  }
+}
+
+/* ─── Themed listbox (ModulrSelect) — avoids native `<select>` popup styling ─ */
+.modulr-select-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--modulr-glass-border);
+  background-color: var(--modulr-glass-fill);
+  color: var(--modulr-text);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+  transition:
+    border-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    color var(--modulr-text-color-duration) var(--modulr-theme-ease),
+    box-shadow var(--modulr-theme-duration) var(--modulr-theme-ease);
+}
+
+.modulr-select-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--modulr-text-muted);
+  margin-right: 0.1rem;
+}
+
+.modulr-select-trigger:hover {
+  border-color: color-mix(in srgb, var(--modulr-accent) 35%, var(--modulr-glass-border));
+}
+
+.modulr-select-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--modulr-page-bg), 0 0 0 4px var(--modulr-accent);
+}
+
+.modulr-select-list {
+  position: absolute;
+  z-index: 70;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  margin: 0;
+  padding: 0.35rem 0;
+  list-style: none;
+  max-height: min(16rem, 45vh);
+  overflow-y: auto;
+  border-radius: 0.5rem;
+  border: 1px solid var(--modulr-glass-border);
+  background-color: var(--modulr-page-bg-2);
+  color: var(--modulr-text);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 var(--modulr-glass-highlight);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+}
+
+.modulr-select-option {
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.modulr-select-option--hl {
+  background-color: color-mix(in srgb, var(--modulr-accent) 22%, transparent);
+}
+
+.modulr-select-option--selected {
+  font-weight: 600;
+}
+
+.modulr-select-option--selected:not(.modulr-select-option--hl) {
+  background-color: color-mix(in srgb, var(--modulr-text) 6%, transparent);
+}
