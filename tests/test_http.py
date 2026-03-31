@@ -346,6 +346,52 @@ def test_post_message_get_module_functions_modulr_core() -> None:
     assert data["payload"]["operations"] == sorted(CORE_OPERATIONS)
 
 
+def test_post_message_submit_module_route() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    register_body = _signed_body(
+        private_key=pk,
+        message_id="smr-http-reg",
+        operation="register_module",
+        payload={
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://old.example"},
+            "signing_public_key": pub.hex(),
+        },
+    )
+    register_resp = client.post("/message", content=register_body)
+    assert register_resp.status_code == 200
+
+    submit_body = _signed_body(
+        private_key=pk,
+        message_id="smr-http-1",
+        operation="submit_module_route",
+        payload={
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "203.0.113.10:8443",
+        },
+    )
+    r = client.post("/message", content=submit_body)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["code"] == str(SuccessCode.MODULE_ROUTE_SUBMITTED)
+    assert data["payload"]["module_id"] == "modulr.storage"
+    assert data["payload"]["route_type"] == "ip"
+    assert data["payload"]["route"] == "203.0.113.10:8443"
+
+
 def test_post_message_get_protocol_version_rejects_non_empty_payload() -> None:
     pk = Ed25519PrivateKey.generate()
     body = _signed_body(

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
+import { ModulrSelect } from "@/components/ui/ModulrSelect";
 import { executeGetProtocolVersion, executeSignedCoreOperation } from "@/lib/coreApi";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 import { formatClientError } from "@/lib/formatClientError";
@@ -26,6 +27,7 @@ const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_protocol_version",
   "lookup_module",
   "get_module_functions",
+  "submit_module_route",
 ]);
 
 function liveExecuteHint(methodId: string): string {
@@ -37,6 +39,9 @@ function liveExecuteHint(methodId: string): string {
   }
   if (methodId === "get_module_functions") {
     return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
+  }
+  if (methodId === "submit_module_route") {
+    return "Same signing path. Core may return 400/unsupported until submit_module_route is implemented server-side.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -139,6 +144,31 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "submit_module_route") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      const routeType = values.route_type?.trim() ?? "";
+      const route = values.route?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "submit_module_route", {
+          module_id: moduleId,
+          route_type: routeType,
+          route,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       await delay(420 + (selected.title.length * 7) % 200);
@@ -180,9 +210,10 @@ export function MethodsMock() {
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
           <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span>,{" "}
-          <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>, and{" "}
-          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span> call your
-          configured Core (signed{" "}
+          <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span>, and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span> call your configured
+          Core (signed{" "}
           <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
           ). Other operations still use mock responses until wired.
         </p>
@@ -287,18 +318,13 @@ function MethodPanel({
                   ) : null}
                 </label>
                 {p.options?.length ? (
-                  <select
+                  <ModulrSelect
                     id={`m-${method.id}-${p.name}`}
                     value={values[p.name] ?? p.options[0]!.value}
-                    onChange={(e) => onChange(p.name, e.target.value)}
-                    className={fieldClass}
+                    onChange={(v) => onChange(p.name, v)}
+                    options={p.options}
                   >
-                    {p.options.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  </ModulrSelect>
                 ) : p.multiline ? (
                   <textarea
                     id={`m-${method.id}-${p.name}`}
