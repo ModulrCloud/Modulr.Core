@@ -22,7 +22,11 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-const LIVE_SIGNED_METHOD_IDS = new Set<string>(["get_protocol_version", "lookup_module"]);
+const LIVE_SIGNED_METHOD_IDS = new Set<string>([
+  "get_protocol_version",
+  "lookup_module",
+  "get_module_functions",
+]);
 
 function liveExecuteHint(methodId: string): string {
   if (methodId === "get_protocol_version") {
@@ -30,6 +34,9 @@ function liveExecuteHint(methodId: string): string {
   }
   if (methodId === "lookup_module") {
     return "Same signing path. The module must already be registered or Core returns MODULE_NOT_FOUND.";
+  }
+  if (methodId === "get_module_functions") {
+    return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -82,8 +89,8 @@ export function MethodsMock() {
       try {
         const data = await executeGetProtocolVersion(base);
         setResult(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+      } catch (e: unknown) {
+        setError(formatClientError(e));
       } finally {
         setLoading(false);
       }
@@ -103,8 +110,29 @@ export function MethodsMock() {
           module_name: moduleName,
         });
         setResult(data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "get_module_functions") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_module_functions", {
+          module_id: moduleId,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
       } finally {
         setLoading(false);
       }
@@ -112,13 +140,18 @@ export function MethodsMock() {
     }
 
     setLoading(true);
-    await delay(420 + (selected.title.length * 7) % 200);
-    const payload: Record<string, string> = {};
-    for (const p of selected.params) {
-      payload[p.name] = values[p.name]?.trim() ?? "";
+    try {
+      await delay(420 + (selected.title.length * 7) % 200);
+      const payload: Record<string, string> = {};
+      for (const p of selected.params) {
+        payload[p.name] = values[p.name]?.trim() ?? "";
+      }
+      setResult(buildMockMethodResponse(selected.id, payload));
+    } catch (e: unknown) {
+      setError(formatClientError(e));
+    } finally {
+      setLoading(false);
     }
-    setResult(buildMockMethodResponse(selected.id, payload));
-    setLoading(false);
   }, [selected, values, settings.coreEndpoints]);
 
   const safeExecute = useCallback(() => {
@@ -146,8 +179,9 @@ export function MethodsMock() {
           (no signed envelope from this UI).
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
-          <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span> and{" "}
-          <span className="font-medium text-[var(--modulr-text)]">lookup_module</span> call your
+          <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>, and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span> call your
           configured Core (signed{" "}
           <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
           ). Other operations still use mock responses until wired.

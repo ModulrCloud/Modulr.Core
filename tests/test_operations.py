@@ -20,6 +20,7 @@ from modulr_core import (
     WireValidationError,
 )
 from modulr_core.config.schema import Settings
+from modulr_core.messages.constants import CORE_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, connect_memory
@@ -122,6 +123,81 @@ def test_register_modulr_core_reserved() -> None:
         with pytest.raises(WireValidationError) as ei:
             dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
         assert ei.value.code is ErrorCode.MODULE_NAME_RESERVED
+
+
+def test_get_module_functions_core_lists_wire_operations() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_functions",
+        {"module_id": "modulr.core"},
+        "gmf-1",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.core"
+    assert out["payload"]["operations"] == sorted(CORE_OPERATIONS)
+    assert out["payload"]["operation_count"] == len(CORE_OPERATIONS)
+
+
+def test_get_module_functions_core_case_insensitive() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_functions",
+        {"module_id": "Modulr.Core"},
+        "gmf-2",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.core"
+
+
+def test_get_module_functions_unknown_module() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_functions",
+        {"module_id": "modulr.unknown"},
+        "gmf-3",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
+
+
+def test_get_module_functions_registered_module_empty_manifest() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://s.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "gmf-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req = make_validated_inbound(
+        pk,
+        "get_module_functions",
+        {"module_id": "modulr.storage"},
+        "gmf-4",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert out["payload"]["operations"] == []
+    assert out["payload"]["operation_count"] == 0
 
 
 def test_lookup_module_case_insensitive_after_register() -> None:
