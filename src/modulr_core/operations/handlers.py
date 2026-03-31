@@ -32,6 +32,7 @@ from modulr_core.operations.payload_util import (
     require_dict,
     require_str,
 )
+from modulr_core.repositories.core_advertised_route import CoreAdvertisedRouteRepository
 from modulr_core.repositories.heartbeat import HeartbeatRepository
 from modulr_core.repositories.modules import ModulesRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
@@ -65,15 +66,28 @@ def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") ->
     return normalize_module_name(raw)
 
 
-def _builtin_core_lookup_payload(*, clock: EpochClock) -> dict[str, Any]:
+def _builtin_core_lookup_payload(
+    *,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
     """Synthetic ``lookup_module`` row for the running Core (not in ``modules``)."""
+    route: dict[str, Any] = {
+        "kind": "modulr.core",
+        "note": "Built-in coordination plane; not stored in modules table.",
+    }
+    raw = CoreAdvertisedRouteRepository(conn).get_route_json()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict):
+            route = parsed
     return {
         "module_name": CANONICAL_CORE_MODULE_NAME,
         "module_version": MODULE_VERSION,
-        "route": {
-            "kind": "modulr.core",
-            "note": "Built-in coordination plane; not stored in modules table.",
-        },
+        "route": route,
         "capabilities": None,
         "metadata": {"builtin": True},
         "signing_public_key": BUILTIN_CORE_SIGNING_PUBLIC_KEY_HEX,
@@ -178,15 +192,19 @@ def handle_submit_module_route(
             code=ErrorCode.INVALID_ROUTE,
         )
     if module_id == CANONICAL_CORE_MODULE_NAME:
-        # Builtin plane (no ``modules`` row). Accept route for UX / ops; not persisted
-        # until a dedicated store exists. Signer enforcement deferred for this path.
+        route_json = canonical_json_str({
+            "route_type": route_type,
+            "route": route,
+        })
+        CoreAdvertisedRouteRepository(conn).upsert(
+            route_json=route_json,
+            updated_at=int(clock()),
+        )
         return success_response_envelope(
             request_message_id=env["message_id"],
             operation_response="submit_module_route_response",
             success_code=SuccessCode.MODULE_ROUTE_SUBMITTED,
-            detail=(
-                "Built-in modulr.core route accepted (not stored in modules table)."
-            ),
+            detail="Modulr.Core advertised route stored.",
             payload={
                 "module_id": CANONICAL_CORE_MODULE_NAME,
                 "route_type": route_type,
@@ -362,7 +380,7 @@ def handle_lookup_module(
     p: dict[str, Any] = env["payload"]
     module_name = _parse_wire_module_name(p)
     if module_name == CANONICAL_CORE_MODULE_NAME:
-        out_payload = _builtin_core_lookup_payload(clock=clock)
+        out_payload = _builtin_core_lookup_payload(conn=conn, clock=clock)
         return success_response_envelope(
             request_message_id=env["message_id"],
             operation_response="lookup_module_response",

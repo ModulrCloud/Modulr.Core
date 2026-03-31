@@ -325,6 +325,17 @@ def test_submit_module_route_builtin_modulr_core() -> None:
     assert out["payload"]["module_id"] == "modulr.core"
     assert out["payload"]["route_type"] == "ip"
     assert out["payload"]["route"] == "127.0.0.1:8000"
+    lu = make_validated_inbound(
+        pk,
+        "lookup_module",
+        {"module_name": "modulr.core"},
+        "smr-core-lu",
+    )
+    looked = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert looked["payload"]["route"] == {
+        "route_type": "ip",
+        "route": "127.0.0.1:8000",
+    }
 
 
 def test_submit_module_route_unknown_module() -> None:
