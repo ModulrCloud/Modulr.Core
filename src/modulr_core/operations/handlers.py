@@ -319,12 +319,11 @@ def handle_submit_module_route(
             route_json=route_json,
             updated_at=now_ts,
         )
-        DialRouteEntryRepository(conn).upsert_merge(
+        # Single dial overwrites legacy JSON; replace rows so a changed endpoint
+        # does not leave stale (scope, old_route_type, old_route) first by id.
+        DialRouteEntryRepository(conn).replace_all_for_scope(
             scope=CANONICAL_CORE_MODULE_NAME,
-            route_type=route_type,
-            route=route,
-            priority=0,
-            endpoint_signing_public_key_hex=None,
+            entries=[(route_type, route, 0, None)],
             now=now_ts,
         )
         return success_response_envelope(
@@ -368,12 +367,9 @@ def handle_submit_module_route(
             f"module {module_id!r} not found",
             code=ErrorCode.MODULE_NOT_FOUND,
         )
-    DialRouteEntryRepository(conn).upsert_merge(
+    DialRouteEntryRepository(conn).replace_all_for_scope(
         scope=normalize_module_name(canonical_name),
-        route_type=route_type,
-        route=route,
-        priority=0,
-        endpoint_signing_public_key_hex=None,
+        entries=[(route_type, route, 0, None)],
         now=now_ts,
     )
     return success_response_envelope(

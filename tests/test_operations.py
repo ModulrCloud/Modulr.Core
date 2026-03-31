@@ -461,6 +461,68 @@ def test_register_and_lookup_module() -> None:
     assert out2["payload"]["routes"] == []
 
 
+def test_submit_module_route_second_submit_replaces_dial_row_not_appends() -> None:
+    """Changing endpoint must not leave the old (scope, route_type, route) row first."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://old.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "smr2-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "203.0.113.1:1",
+            },
+            "smr2-a",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "203.0.113.2:2",
+            },
+            "smr2-b",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 3.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "smr2-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 4.0)
+    assert len(out["payload"]["routes"]) == 1
+    assert out["payload"]["routes"][0]["route"] == "203.0.113.2:2"
+    assert out["payload"]["route"] == "203.0.113.2:2"
+
+
 def test_submit_module_route_updates_module_route() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
