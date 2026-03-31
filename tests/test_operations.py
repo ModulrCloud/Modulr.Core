@@ -307,6 +307,37 @@ def test_submit_module_route_updates_module_route() -> None:
     }
 
 
+def test_submit_module_route_builtin_modulr_core() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "Modulr.Core",
+            "route_type": "ip",
+            "route": "127.0.0.1:8000",
+        },
+        "smr-core-1",
+    )
+    out = dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_SUBMITTED)
+    assert out["payload"]["module_id"] == "modulr.core"
+    assert out["payload"]["route_type"] == "ip"
+    assert out["payload"]["route"] == "127.0.0.1:8000"
+    lu = make_validated_inbound(
+        pk,
+        "lookup_module",
+        {"module_name": "modulr.core"},
+        "smr-core-lu",
+    )
+    looked = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert looked["payload"]["route"] == {
+        "route_type": "ip",
+        "route": "127.0.0.1:8000",
+    }
+
+
 def test_submit_module_route_unknown_module() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

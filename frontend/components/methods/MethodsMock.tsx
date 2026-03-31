@@ -41,7 +41,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
   }
   if (methodId === "submit_module_route") {
-    return "Same signing path. Core may return 400/unsupported until submit_module_route is implemented server-side.";
+    return "Same signing path. modulr.core persists to core_advertised_route and is reflected on lookup_module; other modules must be registered and signer must match.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
