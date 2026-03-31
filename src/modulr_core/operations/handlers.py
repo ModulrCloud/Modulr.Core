@@ -177,6 +177,23 @@ def handle_submit_module_route(
             "route must not be empty",
             code=ErrorCode.INVALID_ROUTE,
         )
+    if module_id == CANONICAL_CORE_MODULE_NAME:
+        # Builtin plane (no ``modules`` row). Accept route for UX / ops; not persisted
+        # until a dedicated store exists. Signer enforcement deferred for this path.
+        return success_response_envelope(
+            request_message_id=env["message_id"],
+            operation_response="submit_module_route_response",
+            success_code=SuccessCode.MODULE_ROUTE_SUBMITTED,
+            detail=(
+                "Built-in modulr.core route accepted (not stored in modules table)."
+            ),
+            payload={
+                "module_id": CANONICAL_CORE_MODULE_NAME,
+                "route_type": route_type,
+                "route": route,
+            },
+            clock=clock,
+        )
     route_json = canonical_json_str({
         "route_type": route_type,
         "route": route,
