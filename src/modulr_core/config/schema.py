@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-# Default relative to the process current working directory when omitted in TOML.
+# Default path segment when omitted in TOML. With :func:`load_settings`, a relative
+# value is resolved against the config file's directory (not process CWD).
 DEFAULT_DATABASE_PATH = Path("data/modulr_core.sqlite")
 
 DEFAULT_MAX_HTTP_BODY_BYTES = 2_097_152  # 2 MiB

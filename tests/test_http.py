@@ -346,6 +346,29 @@ def test_post_message_get_module_functions_modulr_core() -> None:
     assert data["payload"]["operations"] == sorted(CORE_OPERATIONS)
 
 
+def test_post_message_get_module_route_modulr_core() -> None:
+    pk = Ed25519PrivateKey.generate()
+    body = _signed_body(
+        private_key=pk,
+        message_id="gmr-http-1",
+        operation="get_module_route",
+        payload={"module_id": "modulr.core"},
+    )
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    r = client.post("/message", content=body)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    assert data["payload"]["module_id"] == "modulr.core"
+    assert data["payload"]["route_detail"]["kind"] == "modulr.core"
+
+
 def test_post_message_submit_module_route() -> None:
     pk = Ed25519PrivateKey.generate()
     pub = pk.public_key().public_bytes(

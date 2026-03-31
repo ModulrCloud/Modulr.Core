@@ -31,7 +31,11 @@ def load_settings(path: str | Path) -> Settings:
         data = p.read_bytes()
     except FileNotFoundError as e:
         raise ConfigurationError(f"configuration file not found: {p}") from e
-    return load_settings_from_bytes(data, source=str(p))
+    return load_settings_from_bytes(
+        data,
+        source=str(p),
+        config_file_dir=p.resolve().parent,
+    )
 
 
 def load_settings_from_str(toml: str) -> Settings:
@@ -39,7 +43,12 @@ def load_settings_from_str(toml: str) -> Settings:
     return load_settings_from_bytes(toml.encode("utf-8"), source="<string>")
 
 
-def load_settings_from_bytes(data: bytes, *, source: str) -> Settings:
+def load_settings_from_bytes(
+    data: bytes,
+    *,
+    source: str,
+    config_file_dir: Path | None = None,
+) -> Settings:
     """Parse TOML from UTF-8 bytes and return validated :class:`Settings`."""
     try:
         text = data.decode("utf-8")
@@ -51,10 +60,15 @@ def load_settings_from_bytes(data: bytes, *, source: str) -> Settings:
         root = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ConfigurationError(f"invalid TOML ({source}): {e}") from e
-    return _settings_from_root(root, source=source)
+    return _settings_from_root(root, source=source, config_file_dir=config_file_dir)
 
 
-def _settings_from_root(root: dict[str, Any], *, source: str) -> Settings:
+def _settings_from_root(
+    root: dict[str, Any],
+    *,
+    source: str,
+    config_file_dir: Path | None = None,
+) -> Settings:
     if _CONFIG_TABLE not in root:
         raise ConfigurationError(
             f"missing [{_CONFIG_TABLE}] table in configuration ({source})",
@@ -74,6 +88,8 @@ def _settings_from_root(root: dict[str, Any], *, source: str) -> Settings:
         DEFAULT_DATABASE_PATH,
         source,
     )
+    if not database_path.is_absolute() and config_file_dir is not None:
+        database_path = (config_file_dir / database_path).resolve()
     max_http_body = _int_opt(
         table,
         "max_http_body_bytes",

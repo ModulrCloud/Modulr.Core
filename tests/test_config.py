@@ -191,3 +191,21 @@ bootstrap_public_keys = ["{k}"]
     )
     s = load_settings(p)
     assert k in s.bootstrap_public_keys
+    assert s.database_path == (tmp_path / "data" / "modulr_core.sqlite").resolve()
+
+
+def test_load_settings_relative_database_path_is_resolved_vs_config_dir(tmp_path: Path) -> None:
+    k = _valid_hex_pubkey()
+    cfg_dir = tmp_path / "nested"
+    cfg_dir.mkdir()
+    p = cfg_dir / "cfg.toml"
+    p.write_text(
+        f"""
+[modulr_core]
+bootstrap_public_keys = ["{k}"]
+database_path = "state/db.sqlite"
+""",
+        encoding="utf-8",
+    )
+    s = load_settings(p)
+    assert s.database_path == (cfg_dir / "state" / "db.sqlite").resolve()
