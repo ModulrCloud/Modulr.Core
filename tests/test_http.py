@@ -367,6 +367,7 @@ def test_post_message_get_module_route_modulr_core() -> None:
     assert data["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
     assert data["payload"]["module_id"] == "modulr.core"
     assert data["payload"]["route_detail"]["kind"] == "modulr.core"
+    assert data["payload"]["routes"] == []
 
 
 def test_post_message_submit_module_route() -> None:

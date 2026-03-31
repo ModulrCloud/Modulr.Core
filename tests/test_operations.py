@@ -24,6 +24,7 @@ from modulr_core.messages.constants import CORE_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, connect_memory
+from modulr_core.repositories.dial_route_entry import DialRouteEntryRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
 from modulr_core.validation import envelope_signing_bytes, payload_hash
 
@@ -99,6 +100,7 @@ def test_lookup_builtin_modulr_core_case_insensitive() -> None:
         assert out["code"] == str(SuccessCode.MODULE_FOUND)
         assert out["payload"]["module_name"] == "modulr.core"
         assert out["payload"]["metadata"] == {"builtin": True}
+        assert out["payload"]["routes"] == []
 
 
 def test_register_modulr_core_reserved() -> None:
@@ -217,6 +219,7 @@ def test_get_module_route_modulr_core_default() -> None:
         "note": "Built-in coordination plane; not stored in modules table.",
     }
     assert "route_type" not in out["payload"]
+    assert out["payload"]["routes"] == []
 
 
 def test_get_module_route_modulr_core_after_submit() -> None:
@@ -248,6 +251,10 @@ def test_get_module_route_modulr_core_after_submit() -> None:
     }
     assert out["payload"]["route_type"] == "ip"
     assert out["payload"]["route"] == "127.0.0.1:8000"
+    assert len(out["payload"]["routes"]) == 1
+    assert out["payload"]["routes"][0]["route_type"] == "ip"
+    assert out["payload"]["routes"][0]["route"] == "127.0.0.1:8000"
+    assert out["payload"]["routes"][0]["priority"] == 0
 
 
 def test_get_module_route_registered_module() -> None:
@@ -280,6 +287,7 @@ def test_get_module_route_registered_module() -> None:
     assert out["payload"]["module_id"] == "modulr.storage"
     assert out["payload"]["route_detail"] == {"base_url": "https://s.example"}
     assert "route_type" not in out["payload"]
+    assert out["payload"]["routes"] == []
 
 
 def test_get_module_route_matches_lookup_after_submit() -> None:
@@ -326,6 +334,7 @@ def test_get_module_route_matches_lookup_after_submit() -> None:
     }
     assert out["payload"]["route_type"] == "ip"
     assert out["payload"]["route"] == "203.0.113.10:8443"
+    assert len(out["payload"]["routes"]) == 1
     lu = make_validated_inbound(
         pk,
         "lookup_module",
@@ -334,6 +343,44 @@ def test_get_module_route_matches_lookup_after_submit() -> None:
     )
     looked = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 4.0)
     assert looked["payload"]["route"] == out["payload"]["route_detail"]
+    assert looked["payload"]["routes"] == out["payload"]["routes"]
+
+
+def test_get_module_route_modulr_core_multiple_dials_ordered() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    dials = DialRouteEntryRepository(conn)
+    dials.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.1:1",
+        priority=10,
+        endpoint_signing_public_key_hex=None,
+        now=100,
+    )
+    dials.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.2:2",
+        priority=5,
+        endpoint_signing_public_key_hex=None,
+        now=100,
+    )
+    conn.commit()
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "gmr-multi",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    routes = out["payload"]["routes"]
+    assert [r["route"] for r in routes] == ["10.0.0.2:2", "10.0.0.1:1"]
+    assert out["payload"]["route_detail"] == {
+        "route_type": "ip",
+        "route": "10.0.0.2:2",
+    }
 
 
 def test_get_module_route_unknown_returns_not_found() -> None:
@@ -378,6 +425,7 @@ def test_lookup_module_case_insensitive_after_register() -> None:
     out = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out["code"] == str(SuccessCode.MODULE_FOUND)
     assert out["payload"]["module_name"] == "modulr.playground"
+    assert out["payload"]["routes"] == []
 
 
 def test_register_and_lookup_module() -> None:
@@ -410,6 +458,7 @@ def test_register_and_lookup_module() -> None:
     out2 = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out2["code"] == str(SuccessCode.MODULE_FOUND)
     assert out2["payload"]["module_name"] == "modulr.storage"
+    assert out2["payload"]["routes"] == []
 
 
 def test_submit_module_route_updates_module_route() -> None:
@@ -486,6 +535,7 @@ def test_submit_module_route_builtin_modulr_core() -> None:
         "route_type": "ip",
         "route": "127.0.0.1:8000",
     }
+    assert len(looked["payload"]["routes"]) == 1
 
 
 def test_submit_module_route_unknown_module() -> None:
