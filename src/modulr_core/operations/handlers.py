@@ -181,8 +181,24 @@ def handle_submit_module_route(
         "route_type": route_type,
         "route": route,
     })
-    updated = ModulesRepository(conn).update_route_json(
-        module_name=module_id,
+    modules = ModulesRepository(conn)
+    mod_row = modules.get_by_name(module_id)
+    if mod_row is None:
+        raise WireValidationError(
+            f"module {module_id!r} not found",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    reg_key = mod_row["signing_public_key"]
+    if isinstance(reg_key, memoryview):
+        reg_key = reg_key.tobytes()
+    if not secrets.compare_digest(validated.sender_public_key, reg_key):
+        raise WireValidationError(
+            "sender key does not match registered module signing_public_key",
+            code=ErrorCode.IDENTITY_MISMATCH,
+        )
+    canonical_name = str(mod_row["module_name"])
+    updated = modules.update_route_json(
+        module_name=canonical_name,
         route_json=route_json,
     )
     if not updated:
@@ -196,7 +212,7 @@ def handle_submit_module_route(
         success_code=SuccessCode.MODULE_ROUTE_SUBMITTED,
         detail="Module route updated.",
         payload={
-            "module_id": module_id,
+            "module_id": canonical_name,
             "route_type": route_type,
             "route": route,
         },

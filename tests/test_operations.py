@@ -325,6 +325,41 @@ def test_submit_module_route_unknown_module() -> None:
     assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
 
 
+def test_submit_module_route_identity_mismatch() -> None:
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    other_pub = other.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://old.example"},
+            "signing_public_key": other_pub.hex(),
+        },
+        "smr-id-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "203.0.113.10:8443",
+        },
+        "smr-id-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.IDENTITY_MISMATCH
+
+
 def test_register_requires_bootstrap_when_configured() -> None:
     pk = Ed25519PrivateKey.generate()
     other = Ed25519PrivateKey.generate()
