@@ -200,6 +200,156 @@ def test_get_module_functions_registered_module_empty_manifest() -> None:
     assert out["payload"]["operation_count"] == 0
 
 
+def test_get_module_route_modulr_core_default() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "gmr-core-0",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.core"
+    assert out["payload"]["route_detail"] == {
+        "kind": "modulr.core",
+        "note": "Built-in coordination plane; not stored in modules table.",
+    }
+    assert "route_type" not in out["payload"]
+
+
+def test_get_module_route_modulr_core_after_submit() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "Modulr.Core",
+            "route_type": "ip",
+            "route": "127.0.0.1:8000",
+        },
+        "gmr-core-sub",
+    )
+    dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "gmr-core-1",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.core"
+    assert out["payload"]["route_detail"] == {
+        "route_type": "ip",
+        "route": "127.0.0.1:8000",
+    }
+    assert out["payload"]["route_type"] == "ip"
+    assert out["payload"]["route"] == "127.0.0.1:8000"
+
+
+def test_get_module_route_registered_module() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://s.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "gmr-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "Modulr.Storage"},
+        "gmr-1",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.storage"
+    assert out["payload"]["route_detail"] == {"base_url": "https://s.example"}
+    assert "route_type" not in out["payload"]
+
+
+def test_get_module_route_matches_lookup_after_submit() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://old.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "gmr-lu-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "203.0.113.10:8443",
+        },
+        "gmr-lu-sub",
+    )
+    dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "gmr-lu",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_RETURNED)
+    assert out["payload"]["route_detail"] == {
+        "route_type": "ip",
+        "route": "203.0.113.10:8443",
+    }
+    assert out["payload"]["route_type"] == "ip"
+    assert out["payload"]["route"] == "203.0.113.10:8443"
+    lu = make_validated_inbound(
+        pk,
+        "lookup_module",
+        {"module_name": "modulr.storage"},
+        "gmr-lu-lookup",
+    )
+    looked = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 4.0)
+    assert looked["payload"]["route"] == out["payload"]["route_detail"]
+
+
+def test_get_module_route_unknown_returns_not_found() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.unknown"},
+        "gmr-404",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
+
+
 def test_lookup_module_case_insensitive_after_register() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

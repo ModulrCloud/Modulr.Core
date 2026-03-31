@@ -27,6 +27,7 @@ const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_protocol_version",
   "lookup_module",
   "get_module_functions",
+  "get_module_route",
   "submit_module_route",
 ]);
 
@@ -39,6 +40,9 @@ function liveExecuteHint(methodId: string): string {
   }
   if (methodId === "get_module_functions") {
     return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
+  }
+  if (methodId === "get_module_route") {
+    return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
   }
   if (methodId === "submit_module_route") {
     return "Same signing path. modulr.core persists to core_advertised_route and is reflected on lookup_module; other modules must be registered and signer must match.";
@@ -133,6 +137,27 @@ export function MethodsMock() {
       setLoading(true);
       try {
         const data = await executeSignedCoreOperation(base, "get_module_functions", {
+          module_id: moduleId,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "get_module_route") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_module_route", {
           module_id: moduleId,
         });
         setResult(data);

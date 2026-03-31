@@ -66,12 +66,8 @@ def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") ->
     return normalize_module_name(raw)
 
 
-def _builtin_core_lookup_payload(
-    *,
-    conn: sqlite3.Connection,
-    clock: EpochClock,
-) -> dict[str, Any]:
-    """Synthetic ``lookup_module`` row for the running Core (not in ``modules``)."""
+def _modulr_core_route_document(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Route JSON object for built-in ``modulr.core`` (advertised row or default)."""
     route: dict[str, Any] = {
         "kind": "modulr.core",
         "note": "Built-in coordination plane; not stored in modules table.",
@@ -84,6 +80,34 @@ def _builtin_core_lookup_payload(
             parsed = None
         if isinstance(parsed, dict):
             route = parsed
+    return route
+
+
+def _get_module_route_response_payload(
+    module_id: str,
+    route_document: Any,
+) -> dict[str, Any]:
+    """Shape ``get_module_route`` payload from stored route JSON."""
+    out: dict[str, Any] = {
+        "module_id": module_id,
+        "route_detail": route_document,
+    }
+    if isinstance(route_document, dict):
+        rt = route_document.get("route_type")
+        ep = route_document.get("route")
+        if isinstance(rt, str) and isinstance(ep, str):
+            out["route_type"] = rt
+            out["route"] = ep
+    return out
+
+
+def _builtin_core_lookup_payload(
+    *,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Synthetic ``lookup_module`` row for the running Core (not in ``modules``)."""
+    route = _modulr_core_route_document(conn)
     return {
         "module_name": CANONICAL_CORE_MODULE_NAME,
         "module_version": MODULE_VERSION,
@@ -146,8 +170,8 @@ def handle_get_module_functions(
                 "operations": ops,
                 "operation_count": len(ops),
             },
-            clock=clock,
-        )
+        clock=clock,
+    )
     row = ModulesRepository(conn).get_by_name(module_id)
     if row is None:
         raise WireValidationError(
@@ -164,6 +188,57 @@ def handle_get_module_functions(
             "operations": [],
             "operation_count": 0,
         },
+        clock=clock,
+    )
+
+
+def handle_get_module_route(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Return stored route JSON for a registered module or built-in ``modulr.core``."""
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    if module_id == CANONICAL_CORE_MODULE_NAME:
+        route_doc = _modulr_core_route_document(conn)
+        payload = _get_module_route_response_payload(
+            CANONICAL_CORE_MODULE_NAME,
+            route_doc,
+        )
+        return success_response_envelope(
+            request_message_id=env["message_id"],
+            operation_response="get_module_route_response",
+            success_code=SuccessCode.MODULE_ROUTE_RETURNED,
+            detail="Module route returned.",
+            payload=payload,
+            clock=clock,
+        )
+    row = ModulesRepository(conn).get_by_name(module_id)
+    if row is None:
+        raise WireValidationError(
+            f"module {module_id!r} not found",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    try:
+        route_doc = json.loads(row["route_json"])
+    except json.JSONDecodeError as e:
+        raise WireValidationError(
+            f"stored route_json is invalid: {e}",
+            code=ErrorCode.INVALID_ROUTE,
+        ) from e
+    canonical_name = str(row["module_name"])
+    payload = _get_module_route_response_payload(canonical_name, route_doc)
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_module_route_response",
+        success_code=SuccessCode.MODULE_ROUTE_RETURNED,
+        detail="Module route returned.",
+        payload=payload,
         clock=clock,
     )
 
