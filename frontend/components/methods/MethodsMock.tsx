@@ -45,7 +45,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
   }
   if (methodId === "submit_module_route") {
-    return "Same signing path. modulr.core persists to core_advertised_route and is reflected on lookup_module; other modules must be registered and signer must match.";
+    return "Same signing path. mode merge adds/updates one dial; replace_all clears other dials for that scope. Optional priority and endpoint_signing_public_key_hex. Legacy route JSON syncs to the primary dial.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -178,13 +178,27 @@ export function MethodsMock() {
       const moduleId = values.module_id?.trim() ?? "";
       const routeType = values.route_type?.trim() ?? "";
       const route = values.route?.trim() ?? "";
+      const mode = values.mode?.trim();
+      const priorityRaw = values.priority?.trim();
+      const endpointHex = values.endpoint_signing_public_key_hex?.trim();
       setLoading(true);
       try {
-        const data = await executeSignedCoreOperation(base, "submit_module_route", {
+        const payload: Record<string, unknown> = {
           module_id: moduleId,
           route_type: routeType,
           route,
-        });
+        };
+        if (mode) payload.mode = mode;
+        if (priorityRaw) {
+          const n = Number.parseInt(priorityRaw, 10);
+          if (!Number.isNaN(n)) payload.priority = n;
+        }
+        if (endpointHex) payload.endpoint_signing_public_key_hex = endpointHex;
+        const data = await executeSignedCoreOperation(
+          base,
+          "submit_module_route",
+          payload,
+        );
         setResult(data);
       } catch (e: unknown) {
         setError(formatClientError(e));

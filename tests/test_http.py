@@ -414,6 +414,8 @@ def test_post_message_submit_module_route() -> None:
     assert data["payload"]["module_id"] == "modulr.storage"
     assert data["payload"]["route_type"] == "ip"
     assert data["payload"]["route"] == "203.0.113.10:8443"
+    assert data["payload"]["mode"] == "merge"
+    assert data["payload"]["priority"] == 0
 
 
 def test_post_message_get_protocol_version_rejects_non_empty_payload() -> None:

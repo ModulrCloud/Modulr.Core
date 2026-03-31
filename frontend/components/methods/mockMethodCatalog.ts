@@ -81,6 +81,28 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "e.g. 203.0.113.10:8443 or host:port Core should dial",
         required: true,
       },
+      {
+        name: "mode",
+        label: "Mode",
+        placeholder: "",
+        required: false,
+        options: [
+          { value: "merge", label: "merge — add/update one dial" },
+          { value: "replace_all", label: "replace_all — drop others, keep this dial" },
+        ],
+      },
+      {
+        name: "priority",
+        label: "Priority",
+        placeholder: "integer; lower = try first (default 0)",
+        required: false,
+      },
+      {
+        name: "endpoint_signing_public_key_hex",
+        label: "Endpoint Ed25519 pubkey hex (optional)",
+        placeholder: "64 lowercase hex chars",
+        required: false,
+      },
     ],
   },
   {
@@ -335,6 +357,13 @@ export function buildMockMethodResponse(
         module_id: payload.module_id?.trim(),
         route_type: payload.route_type?.trim() || "ip",
         route: payload.route?.trim(),
+        mode: payload.mode?.trim() || "merge",
+        priority: (() => {
+          const raw = payload.priority?.trim();
+          if (!raw) return 0;
+          const n = Number.parseInt(raw, 10);
+          return Number.isNaN(n) ? 0 : n;
+        })(),
         indexed_at: now,
         message:
           "Core would merge this into the canonical routing table so clients resolve the module without assuming IPv4/v6 — route_type carries the transport family.",
