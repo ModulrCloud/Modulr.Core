@@ -202,7 +202,9 @@ def test_open_database_file(tmp_path) -> None:
         c.close()
 
 
-def test_dial_route_entry_table_exists_after_migration(conn: sqlite3.Connection) -> None:
+def test_dial_route_entry_table_exists_after_migration(
+    conn: sqlite3.Connection,
+) -> None:
     row = conn.execute(
         """
         SELECT 1 AS ok FROM sqlite_master
@@ -273,7 +275,9 @@ def test_dial_route_entry_upsert_preserves_created_at(conn: sqlite3.Connection) 
     assert rows[0]["endpoint_signing_public_key_hex"] == "a" * 64
 
 
-def test_dial_route_entry_duplicate_plain_insert_raises(conn: sqlite3.Connection) -> None:
+def test_dial_route_entry_duplicate_plain_insert_raises(
+    conn: sqlite3.Connection,
+) -> None:
     conn.execute(
         """
         INSERT INTO dial_route_entry (

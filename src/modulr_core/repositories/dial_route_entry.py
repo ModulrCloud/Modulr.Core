@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 
 class DialRouteEntryRepository:
@@ -42,7 +43,8 @@ class DialRouteEntryRepository:
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(scope, route_type, route) DO UPDATE SET
                 priority = excluded.priority,
-                endpoint_signing_public_key_hex = excluded.endpoint_signing_public_key_hex,
+                endpoint_signing_public_key_hex =
+                    excluded.endpoint_signing_public_key_hex,
                 updated_at = excluded.updated_at
             """,
             (
@@ -72,7 +74,7 @@ class DialRouteEntryRepository:
     ) -> None:
         """Replace every dial for ``scope`` with ``entries``.
 
-        Each entry is ``(route_type, route, priority, endpoint_signing_public_key_hex)``.
+        Each entry is ``(route_type, route, priority, pubkey_hex_or_none)``.
         """
         self.delete_all_for_scope(scope)
         for route_type, route, priority, pubkey_hex in entries:
