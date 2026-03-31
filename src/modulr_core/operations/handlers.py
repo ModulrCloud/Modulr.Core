@@ -33,6 +33,7 @@ from modulr_core.operations.payload_util import (
     require_str,
 )
 from modulr_core.repositories.core_advertised_route import CoreAdvertisedRouteRepository
+from modulr_core.repositories.dial_route_entry import DialRouteEntryRepository
 from modulr_core.repositories.heartbeat import HeartbeatRepository
 from modulr_core.repositories.modules import ModulesRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
@@ -83,6 +84,22 @@ def _modulr_core_route_document(conn: sqlite3.Connection) -> dict[str, Any]:
     return route
 
 
+def _dial_row_to_wire(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize a ``dial_route_entry`` row for wire payloads."""
+    pk = row.get("endpoint_signing_public_key_hex")
+    if isinstance(pk, memoryview):
+        pk = pk.tobytes().decode("utf-8")
+    out: dict[str, Any] = {
+        "id": row["id"],
+        "route_type": row["route_type"],
+        "route": row["route"],
+        "priority": row["priority"],
+    }
+    if pk:
+        out["endpoint_signing_public_key_hex"] = pk
+    return out
+
+
 def _get_module_route_response_payload(
     module_id: str,
     route_document: Any,
@@ -107,11 +124,19 @@ def _builtin_core_lookup_payload(
     clock: EpochClock,
 ) -> dict[str, Any]:
     """Synthetic ``lookup_module`` row for the running Core (not in ``modules``)."""
-    route = _modulr_core_route_document(conn)
+    dials = DialRouteEntryRepository(conn).list_by_scope(CANONICAL_CORE_MODULE_NAME)
+    if dials:
+        first = dials[0]
+        route: Any = {"route_type": first["route_type"], "route": first["route"]}
+        routes_wire = [_dial_row_to_wire(r) for r in dials]
+    else:
+        route = _modulr_core_route_document(conn)
+        routes_wire = []
     return {
         "module_name": CANONICAL_CORE_MODULE_NAME,
         "module_version": MODULE_VERSION,
         "route": route,
+        "routes": routes_wire,
         "capabilities": None,
         "metadata": {"builtin": True},
         "signing_public_key": BUILTIN_CORE_SIGNING_PUBLIC_KEY_HEX,
@@ -205,11 +230,19 @@ def handle_get_module_route(
     p: dict[str, Any] = env["payload"]
     module_id = _parse_wire_module_name(p, field="module_id")
     if module_id == CANONICAL_CORE_MODULE_NAME:
-        route_doc = _modulr_core_route_document(conn)
+        dials = DialRouteEntryRepository(conn).list_by_scope(CANONICAL_CORE_MODULE_NAME)
+        if dials:
+            route_doc: Any = {
+                "route_type": dials[0]["route_type"],
+                "route": dials[0]["route"],
+            }
+        else:
+            route_doc = _modulr_core_route_document(conn)
         payload = _get_module_route_response_payload(
             CANONICAL_CORE_MODULE_NAME,
             route_doc,
         )
+        payload["routes"] = [_dial_row_to_wire(r) for r in dials]
         return success_response_envelope(
             request_message_id=env["message_id"],
             operation_response="get_module_route_response",
@@ -224,15 +257,25 @@ def handle_get_module_route(
             f"module {module_id!r} not found",
             code=ErrorCode.MODULE_NOT_FOUND,
         )
+    scope = normalize_module_name(str(row["module_name"]))
+    dials = DialRouteEntryRepository(conn).list_by_scope(scope)
     try:
-        route_doc = json.loads(row["route_json"])
+        route_json_obj = json.loads(row["route_json"])
     except json.JSONDecodeError as e:
         raise WireValidationError(
             f"stored route_json is invalid: {e}",
             code=ErrorCode.INVALID_ROUTE,
         ) from e
     canonical_name = str(row["module_name"])
+    if dials:
+        route_doc = {
+            "route_type": dials[0]["route_type"],
+            "route": dials[0]["route"],
+        }
+    else:
+        route_doc = route_json_obj
     payload = _get_module_route_response_payload(canonical_name, route_doc)
+    payload["routes"] = [_dial_row_to_wire(r) for r in dials]
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="get_module_route_response",
@@ -266,6 +309,7 @@ def handle_submit_module_route(
             "route must not be empty",
             code=ErrorCode.INVALID_ROUTE,
         )
+    now_ts = int(clock())
     if module_id == CANONICAL_CORE_MODULE_NAME:
         route_json = canonical_json_str({
             "route_type": route_type,
@@ -273,7 +317,14 @@ def handle_submit_module_route(
         })
         CoreAdvertisedRouteRepository(conn).upsert(
             route_json=route_json,
-            updated_at=int(clock()),
+            updated_at=now_ts,
+        )
+        # Single dial overwrites legacy JSON; replace rows so a changed endpoint
+        # does not leave stale (scope, old_route_type, old_route) first by id.
+        DialRouteEntryRepository(conn).replace_all_for_scope(
+            scope=CANONICAL_CORE_MODULE_NAME,
+            entries=[(route_type, route, 0, None)],
+            now=now_ts,
         )
         return success_response_envelope(
             request_message_id=env["message_id"],
@@ -316,6 +367,11 @@ def handle_submit_module_route(
             f"module {module_id!r} not found",
             code=ErrorCode.MODULE_NOT_FOUND,
         )
+    DialRouteEntryRepository(conn).replace_all_for_scope(
+        scope=normalize_module_name(canonical_name),
+        entries=[(route_type, route, 0, None)],
+        now=now_ts,
+    )
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="submit_module_route_response",
@@ -470,7 +526,7 @@ def handle_lookup_module(
             f"module {module_name!r} not found",
             code=ErrorCode.MODULE_NOT_FOUND,
         )
-    out_payload = _module_row_to_payload(row)
+    out_payload = _module_row_to_lookup_payload(row, conn)
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="lookup_module_response",
@@ -481,14 +537,27 @@ def handle_lookup_module(
     )
 
 
-def _module_row_to_payload(row: dict[str, Any]) -> dict[str, Any]:
+def _module_row_to_lookup_payload(
+    row: dict[str, Any],
+    conn: sqlite3.Connection,
+) -> dict[str, Any]:
     sk = row["signing_public_key"]
     if isinstance(sk, memoryview):
         sk = sk.tobytes()
+    scope = normalize_module_name(str(row["module_name"]))
+    dials = DialRouteEntryRepository(conn).list_by_scope(scope)
+    if dials:
+        first = dials[0]
+        route: Any = {"route_type": first["route_type"], "route": first["route"]}
+        routes_wire = [_dial_row_to_wire(r) for r in dials]
+    else:
+        route = json.loads(row["route_json"])
+        routes_wire = []
     return {
         "module_name": row["module_name"],
         "module_version": row["module_version"],
-        "route": json.loads(row["route_json"]),
+        "route": route,
+        "routes": routes_wire,
         "capabilities": json.loads(row["capabilities_json"])
         if row["capabilities_json"]
         else None,
