@@ -9,7 +9,8 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    # Lazy import avoids import cycle: handlers → envelope → http (this) → app → dispatch → handlers.
+    # Lazy import avoids import cycle: handlers → envelope → http (this) → app
+    # → dispatch → handlers.
     if name == "create_app":
         from modulr_core.http.app import create_app as _create_app
 

@@ -8,6 +8,7 @@ from modulr_core import DuplicateMigrationVersionError
 from modulr_core.persistence import apply_migrations, connect_memory, open_database
 from modulr_core.persistence import migrate as migrate_mod
 from modulr_core.repositories import (
+    DialRouteEntryRepository,
     HeartbeatRepository,
     MessageDedupRepository,
     ModulesRepository,
@@ -199,6 +200,169 @@ def test_open_database_file(tmp_path) -> None:
         assert path.exists()
     finally:
         c.close()
+
+
+def test_dial_route_entry_table_exists_after_migration(
+    conn: sqlite3.Connection,
+) -> None:
+    row = conn.execute(
+        """
+        SELECT 1 AS ok FROM sqlite_master
+        WHERE type = 'table' AND name = 'dial_route_entry'
+        """,
+    ).fetchone()
+    assert row is not None
+
+
+def test_dial_route_entry_list_by_scope_orders_priority_then_id(
+    conn: sqlite3.Connection,
+) -> None:
+    repo = DialRouteEntryRepository(conn)
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.1:1",
+        priority=10,
+        endpoint_signing_public_key_hex=None,
+        now=1_000,
+    )
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.2:2",
+        priority=5,
+        endpoint_signing_public_key_hex=None,
+        now=1_000,
+    )
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.3:3",
+        priority=5,
+        endpoint_signing_public_key_hex=None,
+        now=1_001,
+    )
+    conn.commit()
+    rows = repo.list_by_scope("modulr.core")
+    assert [r["route"] for r in rows] == ["10.0.0.2:2", "10.0.0.3:3", "10.0.0.1:1"]
+
+
+def test_dial_route_entry_upsert_preserves_created_at(conn: sqlite3.Connection) -> None:
+    repo = DialRouteEntryRepository(conn)
+    repo.upsert_merge(
+        scope="modulr.storage",
+        route_type="ip",
+        route="203.0.113.1:443",
+        priority=0,
+        endpoint_signing_public_key_hex=None,
+        now=100,
+    )
+    conn.commit()
+    repo.upsert_merge(
+        scope="modulr.storage",
+        route_type="ip",
+        route="203.0.113.1:443",
+        priority=99,
+        endpoint_signing_public_key_hex="a" * 64,
+        now=200,
+    )
+    conn.commit()
+    rows = repo.list_by_scope("modulr.storage")
+    assert len(rows) == 1
+    assert rows[0]["created_at"] == 100
+    assert rows[0]["updated_at"] == 200
+    assert rows[0]["priority"] == 99
+    assert rows[0]["endpoint_signing_public_key_hex"] == "a" * 64
+
+
+def test_dial_route_entry_duplicate_plain_insert_raises(
+    conn: sqlite3.Connection,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO dial_route_entry (
+            scope, route_type, route, priority,
+            endpoint_signing_public_key_hex, created_at, updated_at
+        ) VALUES ('s', 'ip', 'h:1', 0, NULL, 1, 1)
+        """,
+    )
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """
+            INSERT INTO dial_route_entry (
+                scope, route_type, route, priority,
+                endpoint_signing_public_key_hex, created_at, updated_at
+            ) VALUES ('s', 'ip', 'h:1', 1, NULL, 2, 2)
+            """,
+        )
+        conn.commit()
+
+
+def test_dial_route_entry_replace_all_for_scope(conn: sqlite3.Connection) -> None:
+    repo = DialRouteEntryRepository(conn)
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="old:1",
+        priority=0,
+        endpoint_signing_public_key_hex=None,
+        now=1,
+    )
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="old:2",
+        priority=1,
+        endpoint_signing_public_key_hex=None,
+        now=1,
+    )
+    conn.commit()
+    repo.replace_all_for_scope(
+        scope="modulr.core",
+        entries=[
+            ("dns", "core.example", 0, None),
+            ("ip", "198.51.100.1:8443", 1, None),
+        ],
+        now=50,
+    )
+    conn.commit()
+    rows = repo.list_by_scope("modulr.core")
+    assert len(rows) == 2
+    assert [r["route_type"] for r in rows] == ["dns", "ip"]
+    assert rows[0]["created_at"] == 50
+    assert rows[1]["created_at"] == 50
+
+
+def test_dial_route_entry_delete_by_scope_and_dial(conn: sqlite3.Connection) -> None:
+    repo = DialRouteEntryRepository(conn)
+    repo.upsert_merge(
+        scope="modulr.core",
+        route_type="ip",
+        route="10.0.0.1:8000",
+        priority=0,
+        endpoint_signing_public_key_hex=None,
+        now=1,
+    )
+    conn.commit()
+    assert (
+        repo.delete_by_scope_and_dial(
+            scope="modulr.core",
+            route_type="ip",
+            route="10.0.0.1:8000",
+        )
+        is True
+    )
+    assert (
+        repo.delete_by_scope_and_dial(
+            scope="modulr.core",
+            route_type="ip",
+            route="10.0.0.1:8000",
+        )
+        is False
+    )
+    conn.commit()
+    assert repo.list_by_scope("modulr.core") == []
 
 
 def test_duplicate_migration_version_raises(tmp_path, monkeypatch) -> None:

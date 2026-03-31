@@ -194,7 +194,9 @@ bootstrap_public_keys = ["{k}"]
     assert s.database_path == (tmp_path / "data" / "modulr_core.sqlite").resolve()
 
 
-def test_load_settings_relative_database_path_is_resolved_vs_config_dir(tmp_path: Path) -> None:
+def test_load_settings_relative_database_path_is_resolved_vs_config_dir(
+    tmp_path: Path,
+) -> None:
     k = _valid_hex_pubkey()
     cfg_dir = tmp_path / "nested"
     cfg_dir.mkdir()
