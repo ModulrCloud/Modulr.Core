@@ -70,8 +70,8 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "",
         required: true,
         options: [
-          { value: "ip", label: "ip (current default)" },
-          { value: "dns", label: "dns (reserved / future)" },
+          { value: "ip", label: "IP (current default)" },
+          { value: "dns", label: "DNS (reserved / future)" },
           { value: "onion", label: "onion (future)" },
         ],
       },

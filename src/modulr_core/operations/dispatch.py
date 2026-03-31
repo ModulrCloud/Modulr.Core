@@ -20,11 +20,13 @@ from modulr_core.operations.handlers import (
     handle_register_org,
     handle_resolve_name,
     handle_reverse_resolve_name,
+    handle_submit_module_route,
 )
 
 _HANDLERS = {
     "get_protocol_version": handle_get_protocol_version,
     "get_module_functions": handle_get_module_functions,
+    "submit_module_route": handle_submit_module_route,
     "register_module": handle_register_module,
     "lookup_module": handle_lookup_module,
     "register_name": handle_register_name,

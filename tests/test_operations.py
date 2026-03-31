@@ -262,6 +262,69 @@ def test_register_and_lookup_module() -> None:
     assert out2["payload"]["module_name"] == "modulr.storage"
 
 
+def test_submit_module_route_updates_module_route() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {"base_url": "https://old.example"},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "smr-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "Modulr.Storage",
+            "route_type": "ip",
+            "route": "203.0.113.10:8443",
+        },
+        "smr-1",
+    )
+    out = dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_SUBMITTED)
+    assert out["payload"]["module_id"] == "modulr.storage"
+    lu = make_validated_inbound(
+        pk,
+        "lookup_module",
+        {"module_name": "modulr.storage"},
+        "smr-lu",
+    )
+    looked = dispatch_operation(lu, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert looked["payload"]["route"] == {
+        "route_type": "ip",
+        "route": "203.0.113.10:8443",
+    }
+
+
+def test_submit_module_route_unknown_module() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.unknown",
+            "route_type": "ip",
+            "route": "203.0.113.10:8443",
+        },
+        "smr-404",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
+
+
 def test_register_requires_bootstrap_when_configured() -> None:
     pk = Ed25519PrivateKey.generate()
     other = Ed25519PrivateKey.generate()

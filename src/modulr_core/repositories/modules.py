@@ -56,3 +56,10 @@ class ModulesRepository:
             (module_name,),
         )
         return cur.fetchone() is not None
+
+    def update_route_json(self, *, module_name: str, route_json: str) -> bool:
+        cur = self._conn.execute(
+            "UPDATE modules SET route_json = ? WHERE lower(module_name) = lower(?)",
+            (route_json, module_name),
+        )
+        return cur.rowcount > 0

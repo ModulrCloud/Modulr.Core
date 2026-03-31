@@ -154,6 +154,56 @@ def handle_get_module_functions(
     )
 
 
+def handle_submit_module_route(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    route_type = require_str(p, "route_type").strip()
+    route = require_str(p, "route").strip()
+    if not route_type:
+        raise WireValidationError(
+            "route_type must not be empty",
+            code=ErrorCode.INVALID_ROUTE,
+        )
+    if not route:
+        raise WireValidationError(
+            "route must not be empty",
+            code=ErrorCode.INVALID_ROUTE,
+        )
+    route_json = canonical_json_str({
+        "route_type": route_type,
+        "route": route,
+    })
+    updated = ModulesRepository(conn).update_route_json(
+        module_name=module_id,
+        route_json=route_json,
+    )
+    if not updated:
+        raise WireValidationError(
+            f"module {module_id!r} not found",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="submit_module_route_response",
+        success_code=SuccessCode.MODULE_ROUTE_SUBMITTED,
+        detail="Module route updated.",
+        payload={
+            "module_id": module_id,
+            "route_type": route_type,
+            "route": route,
+        },
+        clock=clock,
+    )
+
+
 def handle_register_module(
     validated: ValidatedInbound,
     *,
