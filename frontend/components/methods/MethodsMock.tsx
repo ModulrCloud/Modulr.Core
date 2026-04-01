@@ -29,6 +29,7 @@ const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_module_functions",
   "get_module_route",
   "submit_module_route",
+  "remove_module_route",
 ]);
 
 function liveExecuteHint(methodId: string): string {
@@ -45,7 +46,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
   }
   if (methodId === "submit_module_route") {
-    return "Same signing path. Omit mode → replace_all (one canonical dial). Explicit merge stacks dials; for modulr.core, merge requires a bootstrap key when dev_mode is off and bootstrap keys are set. Optional priority and endpoint_signing_public_key_hex. Legacy route JSON syncs to the primary dial.";
+    return "Same signing path. This form defaults mode to merge (stack dials). If you omit mode on the wire entirely, Core uses replace_all. modulr.core merge (and remove) need a bootstrap key when dev_mode is off and bootstrap keys are set. Optional priority and endpoint_signing_public_key_hex.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -208,6 +209,31 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "remove_module_route") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      const routeType = values.route_type?.trim() ?? "";
+      const route = values.route?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "remove_module_route", {
+          module_id: moduleId,
+          route_type: routeType,
+          route,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
     try {
       await delay(420 + (selected.title.length * 7) % 200);
@@ -250,8 +276,10 @@ export function MethodsMock() {
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
           <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
-          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span>, and{" "}
-          <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span> call your configured
+          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span>, and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">remove_module_route</span>{" "}
+          call your configured
           Core (signed{" "}
           <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">POST /message</code>
           ). Other operations still use mock responses until wired.

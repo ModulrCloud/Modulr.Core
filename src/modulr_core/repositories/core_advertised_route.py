@@ -32,3 +32,7 @@ class CoreAdvertisedRouteRepository:
             """,
             (route_json, updated_at),
         )
+
+    def delete_singleton(self) -> None:
+        """Remove the advertised row so reads fall back to the built-in default doc."""
+        self._conn.execute("DELETE FROM core_advertised_route WHERE singleton = 1")

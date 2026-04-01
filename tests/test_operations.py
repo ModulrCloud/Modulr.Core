@@ -817,6 +817,258 @@ def test_submit_module_route_core_merge_allowed_for_bootstrap_sender() -> None:
     assert routes == {"127.0.0.1:1", "127.0.0.1:2"}
 
 
+def test_remove_module_route_registered_module() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "rmr-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.10:443",
+            },
+            "rmr-sub",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    rem = make_validated_inbound(
+        pk,
+        "remove_module_route",
+        {
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "198.51.100.10:443",
+        },
+        "rmr-del",
+    )
+    out = dispatch_operation(rem, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert out["code"] == str(SuccessCode.MODULE_ROUTE_REMOVED)
+    assert out["payload"]["module_id"] == "modulr.storage"
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "rmr-gmr",
+    )
+    gout = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 4.0)
+    assert gout["payload"]["routes"] == []
+    assert gout["payload"]["route_detail"] == {}
+
+
+def test_remove_module_route_dial_not_found() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "rmr2-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.1:1",
+            },
+            "rmr2-sub",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    rem = make_validated_inbound(
+        pk,
+        "remove_module_route",
+        {
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "198.51.100.99:99",
+        },
+        "rmr2-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(rem, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert ei.value.code is ErrorCode.DIAL_NOT_FOUND
+
+
+def test_remove_module_route_core_rejected_without_bootstrap() -> None:
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    other_hex = other.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    settings = _settings(dev_mode=False, bootstrap_public_keys=(other_hex,))
+    dispatch_operation(
+        make_validated_inbound(
+            other,
+            "submit_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:55",
+            },
+            "rmr-core-seed",
+        ),
+        settings=settings,
+        conn=conn,
+        clock=lambda: 0.5,
+    )
+    rem = make_validated_inbound(
+        pk,
+        "remove_module_route",
+        {
+            "module_id": "modulr.core",
+            "route_type": "ip",
+            "route": "127.0.0.1:55",
+        },
+        "rmr-core-denied",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(rem, settings=settings, conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.UNAUTHORIZED
+
+
+def test_remove_module_route_core_clears_advertised_when_last_removed() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:7000",
+            },
+            "rmr-core-sub",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "remove_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:7000",
+            },
+            "rmr-core-rem",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "rmr-core-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert out["payload"]["routes"] == []
+    assert out["payload"]["route_detail"]["kind"] == "modulr.core"
+
+
+def test_remove_module_route_identity_mismatch() -> None:
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "rmr3-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.3:3",
+            },
+            "rmr3-sub",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    rem = make_validated_inbound(
+        other,
+        "remove_module_route",
+        {
+            "module_id": "modulr.storage",
+            "route_type": "ip",
+            "route": "198.51.100.3:3",
+        },
+        "rmr3-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(rem, settings=_settings(), conn=conn, clock=lambda: 3.0)
+    assert ei.value.code is ErrorCode.IDENTITY_MISMATCH
+
+
 def test_submit_module_route_invalid_endpoint_pubkey() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

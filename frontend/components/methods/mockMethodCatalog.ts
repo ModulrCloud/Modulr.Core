@@ -87,8 +87,8 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "",
         required: false,
         options: [
-          { value: "replace_all", label: "replace_all — single canonical dial (default if omitted)" },
-          { value: "merge", label: "merge — add/update one dial (modulr.core: bootstrap only when locked)" },
+          { value: "merge", label: "merge — add/update one dial (default in this form; modulr.core: bootstrap when locked)" },
+          { value: "replace_all", label: "replace_all — drop other dials, keep only this one (API default if mode omitted)" },
         ],
       },
       {
@@ -102,6 +102,37 @@ export const METHOD_CATALOG: MethodDef[] = [
         label: "Endpoint Ed25519 pubkey hex (optional)",
         placeholder: "64 lowercase hex chars",
         required: false,
+      },
+    ],
+  },
+  {
+    id: "remove_module_route",
+    title: "remove_module_route",
+    summary:
+      "Drop one stored dial for a module (same module_id + route_type + route as submit). Registered modules sign with their module key; modulr.core removals require a bootstrap key when dev_mode is off.",
+    params: [
+      {
+        name: "module_id",
+        label: "Module id",
+        placeholder: "e.g. modulr.storage",
+        required: true,
+      },
+      {
+        name: "route_type",
+        label: "Route type",
+        placeholder: "",
+        required: true,
+        options: [
+          { value: "ip", label: "IP (current default)" },
+          { value: "dns", label: "DNS (reserved / future)" },
+          { value: "onion", label: "onion (future)" },
+        ],
+      },
+      {
+        name: "route",
+        label: "Route",
+        placeholder: "exact host:port to remove (must match a stored dial)",
+        required: true,
       },
     ],
   },
@@ -298,6 +329,7 @@ const CORE_OPERATION_NAMES = [
   "lookup_module",
   "get_module_functions",
   "submit_module_route",
+  "remove_module_route",
   "get_module_route",
   "report_module_state",
   "get_module_state",
@@ -357,7 +389,7 @@ export function buildMockMethodResponse(
         module_id: payload.module_id?.trim(),
         route_type: payload.route_type?.trim() || "ip",
         route: payload.route?.trim(),
-        mode: payload.mode?.trim() || "replace_all",
+        mode: payload.mode?.trim() || "merge",
         priority: (() => {
           const raw = payload.priority?.trim();
           if (!raw) return 0;
@@ -367,6 +399,15 @@ export function buildMockMethodResponse(
         indexed_at: now,
         message:
           "Core would merge this into the canonical routing table so clients resolve the module without assuming IPv4/v6 — route_type carries the transport family.",
+      };
+    case "remove_module_route":
+      return {
+        status: "accepted_mock",
+        module_id: payload.module_id?.trim(),
+        route_type: payload.route_type?.trim() || "ip",
+        route: payload.route?.trim(),
+        removed_at: now,
+        message: "Core would delete this dial row if it exists; live Core uses signed POST /message.",
       };
     case "get_module_route": {
       const mid = payload.module_id?.trim() || "modulr.core";
