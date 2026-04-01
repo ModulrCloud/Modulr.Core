@@ -87,8 +87,8 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "",
         required: false,
         options: [
-          { value: "merge", label: "merge — add/update one dial" },
-          { value: "replace_all", label: "replace_all — drop others, keep this dial" },
+          { value: "replace_all", label: "replace_all — single canonical dial (default if omitted)" },
+          { value: "merge", label: "merge — add/update one dial (modulr.core: bootstrap only when locked)" },
         ],
       },
       {
@@ -357,7 +357,7 @@ export function buildMockMethodResponse(
         module_id: payload.module_id?.trim(),
         route_type: payload.route_type?.trim() || "ip",
         route: payload.route?.trim(),
-        mode: payload.mode?.trim() || "merge",
+        mode: payload.mode?.trim() || "replace_all",
         priority: (() => {
           const raw = payload.priority?.trim();
           if (!raw) return 0;

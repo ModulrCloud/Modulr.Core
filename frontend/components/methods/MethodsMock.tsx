@@ -45,7 +45,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
   }
   if (methodId === "submit_module_route") {
-    return "Same signing path. mode merge adds/updates one dial; replace_all clears other dials for that scope. Optional priority and endpoint_signing_public_key_hex. Legacy route JSON syncs to the primary dial.";
+    return "Same signing path. Omit mode → replace_all (one canonical dial). Explicit merge stacks dials; for modulr.core, merge requires a bootstrap key when dev_mode is off and bootstrap keys are set. Optional priority and endpoint_signing_public_key_hex. Legacy route JSON syncs to the primary dial.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }

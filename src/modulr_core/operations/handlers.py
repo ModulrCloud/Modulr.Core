@@ -54,10 +54,13 @@ _MAX_METRICS_CANONICAL_BYTES = 65_536
 
 
 def _parse_submit_route_mode(p: dict[str, Any]) -> str:
-    """``merge`` (default) adds/updates one dial; ``replace_all`` clears scope."""
+    """Omitted mode → ``replace_all`` (single canonical dial; backward compatible).
+
+    Explicit ``merge`` adds/updates one dial without dropping siblings.
+    """
     v = p.get("mode")
     if v is None:
-        return "merge"
+        return "replace_all"
     if not isinstance(v, str) or not v.strip():
         raise WireValidationError(
             "payload.mode must be a non-empty string or omitted",
@@ -349,7 +352,6 @@ def handle_submit_module_route(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
     module_id = _parse_wire_module_name(p, field="module_id")
@@ -372,6 +374,11 @@ def handle_submit_module_route(
     dial_repo = DialRouteEntryRepository(conn)
 
     if module_id == CANONICAL_CORE_MODULE_NAME:
+        if mode == "merge":
+            require_bootstrap_sender(
+                settings=settings,
+                sender_public_key_hex=env["sender_public_key"],
+            )
         if mode == "replace_all":
             dial_repo.replace_all_for_scope(
                 scope=CANONICAL_CORE_MODULE_NAME,
