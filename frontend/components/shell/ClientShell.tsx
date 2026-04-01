@@ -1,7 +1,5 @@
 "use client";
 
-import { useLayoutEffect } from "react";
-
 import { AppProviders } from "@/components/providers/AppProviders";
 import { formatClientError } from "@/lib/formatClientError";
 
@@ -10,6 +8,8 @@ import { AppShell } from "./AppShell";
 function _rejectionReasonIsEventLike(r: unknown): boolean {
   if (typeof Event !== "undefined" && r instanceof Event) return true;
   if (typeof r === "object" && r !== null) {
+    const tag = Object.prototype.toString.call(r);
+    if (tag === "[object Event]" || tag === "[object ErrorEvent]") return true;
     const o = r as { type?: unknown; target?: unknown; isTrusted?: unknown };
     if (
       typeof o.type === "string" &&
@@ -26,35 +26,40 @@ function _rejectionReasonIsEventLike(r: unknown): boolean {
   }
 }
 
+const REJECTION_FILTER_KEY = "__modulrSuppressEventRejection";
+
 /**
  * Next / webpack sometimes surface DOM `Event` as an unhandled Promise rejection
- * (e.g. image decode paths). That produces a useless dev overlay ("[object Event]").
- * Register in capture phase + useLayoutEffect so we run as early as possible vs
- * bubble-phase listeners. Still only suppresses event-shaped reasons.
+ * (e.g. chunk/image decode). That becomes a useless dev overlay ("Error: [object Event]").
+ *
+ * Install once at module load (before useLayoutEffect) so we run before Next's
+ * `use-error-handler` listener when possible. `stopImmediatePropagation` keeps other
+ * capture-phase listeners on `window` from treating it as a fatal app error.
  */
-function useSuppressEventShapedUnhandledRejections(): void {
-  useLayoutEffect(() => {
-    const onRejection = (ev: PromiseRejectionEvent) => {
-      const r = ev.reason;
-      if (!_rejectionReasonIsEventLike(r)) return;
-      ev.preventDefault();
-      if (process.env.NODE_ENV === "development") {
-        console.warn(
-          "[modulr-ui] Unhandled rejection (event):",
-          formatClientError(r),
-        );
-      }
-    };
-    window.addEventListener("unhandledrejection", onRejection, { capture: true });
-    return () =>
-      window.removeEventListener("unhandledrejection", onRejection, {
-        capture: true,
-      });
-  }, []);
+function _installUnhandledRejectionEventFilter(): void {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as Record<string, boolean | undefined>;
+  if (w[REJECTION_FILTER_KEY]) return;
+  w[REJECTION_FILTER_KEY] = true;
+
+  const onRejection = (ev: PromiseRejectionEvent) => {
+    const r = ev.reason;
+    if (!_rejectionReasonIsEventLike(r)) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (process.env.NODE_ENV === "development") {
+      console.warn(
+        "[modulr-ui] Unhandled rejection (event):",
+        formatClientError(r),
+      );
+    }
+  };
+  window.addEventListener("unhandledrejection", onRejection, { capture: true });
 }
 
+_installUnhandledRejectionEventFilter();
+
 export function ClientShell({ children }: { children: React.ReactNode }) {
-  useSuppressEventShapedUnhandledRejections();
   return (
     <AppProviders>
       <AppShell>{children}</AppShell>

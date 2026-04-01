@@ -28,6 +28,8 @@ from modulr_core.operations.module_names import (
 )
 from modulr_core.operations.payload_util import (
     optional_dict,
+    optional_ed25519_public_key_hex,
+    optional_int,
     optional_json_value,
     require_dict,
     require_str,
@@ -49,6 +51,63 @@ _MODULE_NAME_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
 )
 _MAX_METRICS_CANONICAL_BYTES = 65_536
+
+
+def _parse_submit_route_mode(p: dict[str, Any]) -> str:
+    """Omitted mode → ``replace_all`` (single canonical dial; backward compatible).
+
+    Explicit ``merge`` adds/updates one dial without dropping siblings.
+    """
+    v = p.get("mode")
+    if v is None:
+        return "replace_all"
+    if not isinstance(v, str) or not v.strip():
+        raise WireValidationError(
+            "payload.mode must be a non-empty string or omitted",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    m = v.strip().lower()
+    if m in ("merge", "replace_all"):
+        return m
+    raise WireValidationError(
+        'payload.mode must be "merge" or "replace_all"',
+        code=ErrorCode.PAYLOAD_INVALID,
+    )
+
+
+def _parse_route_priority(p: dict[str, Any]) -> int:
+    v = optional_int(p, "priority")
+    return 0 if v is None else v
+
+
+def _sync_legacy_route_to_primary_dial(
+    conn: sqlite3.Connection,
+    *,
+    scope: str,
+    is_core: bool,
+    module_row_name: str | None,
+    now_ts: int,
+) -> None:
+    """Point legacy single-route JSON at the primary row (first by priority, id)."""
+    rows = DialRouteEntryRepository(conn).list_by_scope(scope)
+    if not rows:
+        return
+    first = rows[0]
+    route_json = canonical_json_str({
+        "route_type": first["route_type"],
+        "route": first["route"],
+    })
+    if is_core:
+        CoreAdvertisedRouteRepository(conn).upsert(
+            route_json=route_json,
+            updated_at=now_ts,
+        )
+    else:
+        assert module_row_name is not None
+        ModulesRepository(conn).update_route_json(
+            module_name=module_row_name,
+            route_json=route_json,
+        )
 
 
 def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") -> str:
@@ -293,7 +352,6 @@ def handle_submit_module_route(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
     module_id = _parse_wire_module_name(p, field="module_id")
@@ -309,22 +367,39 @@ def handle_submit_module_route(
             "route must not be empty",
             code=ErrorCode.INVALID_ROUTE,
         )
+    mode = _parse_submit_route_mode(p)
+    priority = _parse_route_priority(p)
+    endpoint_pk = optional_ed25519_public_key_hex(p)
     now_ts = int(clock())
+    dial_repo = DialRouteEntryRepository(conn)
+
     if module_id == CANONICAL_CORE_MODULE_NAME:
-        route_json = canonical_json_str({
-            "route_type": route_type,
-            "route": route,
-        })
-        CoreAdvertisedRouteRepository(conn).upsert(
-            route_json=route_json,
-            updated_at=now_ts,
-        )
-        # Single dial overwrites legacy JSON; replace rows so a changed endpoint
-        # does not leave stale (scope, old_route_type, old_route) first by id.
-        DialRouteEntryRepository(conn).replace_all_for_scope(
+        if mode == "merge":
+            require_bootstrap_sender(
+                settings=settings,
+                sender_public_key_hex=env["sender_public_key"],
+            )
+        if mode == "replace_all":
+            dial_repo.replace_all_for_scope(
+                scope=CANONICAL_CORE_MODULE_NAME,
+                entries=[(route_type, route, priority, endpoint_pk)],
+                now=now_ts,
+            )
+        else:
+            dial_repo.upsert_merge(
+                scope=CANONICAL_CORE_MODULE_NAME,
+                route_type=route_type,
+                route=route,
+                priority=priority,
+                endpoint_signing_public_key_hex=endpoint_pk,
+                now=now_ts,
+            )
+        _sync_legacy_route_to_primary_dial(
+            conn,
             scope=CANONICAL_CORE_MODULE_NAME,
-            entries=[(route_type, route, 0, None)],
-            now=now_ts,
+            is_core=True,
+            module_row_name=None,
+            now_ts=now_ts,
         )
         return success_response_envelope(
             request_message_id=env["message_id"],
@@ -335,13 +410,12 @@ def handle_submit_module_route(
                 "module_id": CANONICAL_CORE_MODULE_NAME,
                 "route_type": route_type,
                 "route": route,
+                "mode": mode,
+                "priority": priority,
             },
             clock=clock,
         )
-    route_json = canonical_json_str({
-        "route_type": route_type,
-        "route": route,
-    })
+
     modules = ModulesRepository(conn)
     mod_row = modules.get_by_name(module_id)
     if mod_row is None:
@@ -358,19 +432,28 @@ def handle_submit_module_route(
             code=ErrorCode.IDENTITY_MISMATCH,
         )
     canonical_name = str(mod_row["module_name"])
-    updated = modules.update_route_json(
-        module_name=canonical_name,
-        route_json=route_json,
-    )
-    if not updated:
-        raise WireValidationError(
-            f"module {module_id!r} not found",
-            code=ErrorCode.MODULE_NOT_FOUND,
+    scope = normalize_module_name(canonical_name)
+    if mode == "replace_all":
+        dial_repo.replace_all_for_scope(
+            scope=scope,
+            entries=[(route_type, route, priority, endpoint_pk)],
+            now=now_ts,
         )
-    DialRouteEntryRepository(conn).replace_all_for_scope(
-        scope=normalize_module_name(canonical_name),
-        entries=[(route_type, route, 0, None)],
-        now=now_ts,
+    else:
+        dial_repo.upsert_merge(
+            scope=scope,
+            route_type=route_type,
+            route=route,
+            priority=priority,
+            endpoint_signing_public_key_hex=endpoint_pk,
+            now=now_ts,
+        )
+    _sync_legacy_route_to_primary_dial(
+        conn,
+        scope=scope,
+        is_core=False,
+        module_row_name=canonical_name,
+        now_ts=now_ts,
     )
     return success_response_envelope(
         request_message_id=env["message_id"],
@@ -381,6 +464,8 @@ def handle_submit_module_route(
             "module_id": canonical_name,
             "route_type": route_type,
             "route": route,
+            "mode": mode,
+            "priority": priority,
         },
         clock=clock,
     )

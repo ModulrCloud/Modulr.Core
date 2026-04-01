@@ -489,6 +489,7 @@ def test_submit_module_route_second_submit_replaces_dial_row_not_appends() -> No
                 "module_id": "modulr.storage",
                 "route_type": "ip",
                 "route": "203.0.113.1:1",
+                "mode": "replace_all",
             },
             "smr2-a",
         ),
@@ -504,6 +505,7 @@ def test_submit_module_route_second_submit_replaces_dial_row_not_appends() -> No
                 "module_id": "modulr.storage",
                 "route_type": "ip",
                 "route": "203.0.113.2:2",
+                "mode": "replace_all",
             },
             "smr2-b",
         ),
@@ -555,6 +557,8 @@ def test_submit_module_route_updates_module_route() -> None:
     out = dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 2.0)
     assert out["code"] == str(SuccessCode.MODULE_ROUTE_SUBMITTED)
     assert out["payload"]["module_id"] == "modulr.storage"
+    assert out["payload"]["mode"] == "replace_all"
+    assert out["payload"]["priority"] == 0
     lu = make_validated_inbound(
         pk,
         "lookup_module",
@@ -566,6 +570,366 @@ def test_submit_module_route_updates_module_route() -> None:
         "route_type": "ip",
         "route": "203.0.113.10:8443",
     }
+    assert len(looked["payload"]["routes"]) == 1
+
+
+def test_submit_module_route_merge_stacks_two_dials() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "sm3-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.1:1",
+            },
+            "sm3-a",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.2:2",
+                "mode": "merge",
+            },
+            "sm3-b",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 3.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "sm3-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 4.0)
+    assert len(out["payload"]["routes"]) == 2
+    assert {r["route"] for r in out["payload"]["routes"]} == {
+        "198.51.100.1:1",
+        "198.51.100.2:2",
+    }
+
+
+def test_submit_module_route_replace_all_after_merge_leaves_one_dial() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "sm4-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.1:1",
+            },
+            "sm4-a",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.2:2",
+                "mode": "merge",
+            },
+            "sm4-b",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 3.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "203.0.113.99:9999",
+                "mode": "replace_all",
+            },
+            "sm4-c",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 4.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "sm4-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 5.0)
+    assert len(out["payload"]["routes"]) == 1
+    assert out["payload"]["routes"][0]["route"] == "203.0.113.99:9999"
+
+
+def test_submit_module_route_invalid_mode() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.core",
+            "route_type": "ip",
+            "route": "127.0.0.1:1",
+            "mode": "wipe",
+        },
+        "sm5",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_submit_module_route_core_merge_rejected_without_bootstrap() -> None:
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    other_hex = other.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    settings = _settings(dev_mode=False, bootstrap_public_keys=(other_hex,))
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.core",
+            "route_type": "ip",
+            "route": "127.0.0.1:1",
+            "mode": "merge",
+        },
+        "sm-core-merge-denied",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(submit, settings=settings, conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.UNAUTHORIZED
+
+
+def test_submit_module_route_core_merge_allowed_for_bootstrap_sender() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_hex = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    settings = _settings(dev_mode=False, bootstrap_public_keys=(sender_hex,))
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:1",
+            },
+            "sm-core-m1",
+        ),
+        settings=settings,
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:2",
+                "mode": "merge",
+            },
+            "sm-core-m2",
+        ),
+        settings=settings,
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "sm-core-gmr",
+    )
+    out = dispatch_operation(gmr, settings=settings, conn=conn, clock=lambda: 3.0)
+    assert len(out["payload"]["routes"]) == 2
+    routes = {r["route"] for r in out["payload"]["routes"]}
+    assert routes == {"127.0.0.1:1", "127.0.0.1:2"}
+
+
+def test_submit_module_route_invalid_endpoint_pubkey() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.core",
+            "route_type": "ip",
+            "route": "127.0.0.1:1",
+            "endpoint_signing_public_key_hex": "g" * 64,
+        },
+        "sm6",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PUBLIC_KEY_INVALID
+
+
+def test_submit_module_route_endpoint_pubkey_stored_on_dial() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    epk = Ed25519PrivateKey.generate().public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    submit = make_validated_inbound(
+        pk,
+        "submit_module_route",
+        {
+            "module_id": "modulr.core",
+            "route_type": "ip",
+            "route": "127.0.0.1:9000",
+            "endpoint_signing_public_key_hex": epk,
+        },
+        "sm8",
+    )
+    dispatch_operation(submit, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.core"},
+        "sm8-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert out["payload"]["routes"][0]["endpoint_signing_public_key_hex"] == epk
+
+
+def test_submit_module_route_merge_priority_orders_primary() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_module",
+            {
+                "module_name": "modulr.storage",
+                "module_version": MODULE_VERSION,
+                "route": {"base_url": "https://old.example"},
+                "signing_public_key": sender_pub.hex(),
+            },
+            "sm7-reg",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.10:10",
+                "priority": 10,
+            },
+            "sm7-a",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.storage",
+                "route_type": "ip",
+                "route": "198.51.100.5:5",
+                "priority": 5,
+                "mode": "merge",
+            },
+            "sm7-b",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 3.0,
+    )
+    gmr = make_validated_inbound(
+        pk,
+        "get_module_route",
+        {"module_id": "modulr.storage"},
+        "sm7-gmr",
+    )
+    out = dispatch_operation(gmr, settings=_settings(), conn=conn, clock=lambda: 4.0)
+    assert out["payload"]["routes"][0]["route"] == "198.51.100.5:5"
+    assert out["payload"]["route"] == "198.51.100.5:5"
 
 
 def test_submit_module_route_builtin_modulr_core() -> None:
@@ -586,6 +950,8 @@ def test_submit_module_route_builtin_modulr_core() -> None:
     assert out["payload"]["module_id"] == "modulr.core"
     assert out["payload"]["route_type"] == "ip"
     assert out["payload"]["route"] == "127.0.0.1:8000"
+    assert out["payload"]["mode"] == "replace_all"
+    assert out["payload"]["priority"] == 0
     lu = make_validated_inbound(
         pk,
         "lookup_module",
