@@ -88,9 +88,21 @@ def _sync_legacy_route_to_primary_dial(
     module_row_name: str | None,
     now_ts: int,
 ) -> None:
-    """Point legacy single-route JSON at the primary row (first by priority, id)."""
+    """Point legacy single-route JSON at the primary row (first by priority, id).
+
+    When no dials remain, clear core's singleton row or reset the module's
+    ``route_json`` to ``{}`` so ``get_module_route`` / lookup stay consistent.
+    """
     rows = DialRouteEntryRepository(conn).list_by_scope(scope)
     if not rows:
+        if is_core:
+            CoreAdvertisedRouteRepository(conn).delete_singleton()
+        else:
+            assert module_row_name is not None
+            ModulesRepository(conn).update_route_json(
+                module_name=module_row_name,
+                route_json=canonical_json_str({}),
+            )
         return
     first = rows[0]
     route_json = canonical_json_str({
@@ -466,6 +478,114 @@ def handle_submit_module_route(
             "route": route,
             "mode": mode,
             "priority": priority,
+        },
+        clock=clock,
+    )
+
+
+def handle_remove_module_route(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """Delete one dial for ``(scope, route_type, route)``; sync legacy route JSON."""
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    route_type = require_str(p, "route_type").strip()
+    route = require_str(p, "route").strip()
+    if not route_type:
+        raise WireValidationError(
+            "route_type must not be empty",
+            code=ErrorCode.INVALID_ROUTE,
+        )
+    if not route:
+        raise WireValidationError(
+            "route must not be empty",
+            code=ErrorCode.INVALID_ROUTE,
+        )
+    now_ts = int(clock())
+    dial_repo = DialRouteEntryRepository(conn)
+
+    if module_id == CANONICAL_CORE_MODULE_NAME:
+        require_bootstrap_sender(
+            settings=settings,
+            sender_public_key_hex=env["sender_public_key"],
+        )
+        deleted = dial_repo.delete_by_scope_and_dial(
+            scope=CANONICAL_CORE_MODULE_NAME,
+            route_type=route_type,
+            route=route,
+        )
+        if not deleted:
+            raise WireValidationError(
+                "no matching dial for modulr.core",
+                code=ErrorCode.DIAL_NOT_FOUND,
+            )
+        _sync_legacy_route_to_primary_dial(
+            conn,
+            scope=CANONICAL_CORE_MODULE_NAME,
+            is_core=True,
+            module_row_name=None,
+            now_ts=now_ts,
+        )
+        return success_response_envelope(
+            request_message_id=env["message_id"],
+            operation_response="remove_module_route_response",
+            success_code=SuccessCode.MODULE_ROUTE_REMOVED,
+            detail="Modulr.Core dial removed.",
+            payload={
+                "module_id": CANONICAL_CORE_MODULE_NAME,
+                "route_type": route_type,
+                "route": route,
+            },
+            clock=clock,
+        )
+
+    mod_row = ModulesRepository(conn).get_by_name(module_id)
+    if mod_row is None:
+        raise WireValidationError(
+            f"module {module_id!r} not found",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    reg_key = mod_row["signing_public_key"]
+    if isinstance(reg_key, memoryview):
+        reg_key = reg_key.tobytes()
+    if not secrets.compare_digest(validated.sender_public_key, reg_key):
+        raise WireValidationError(
+            "sender key does not match registered module signing_public_key",
+            code=ErrorCode.IDENTITY_MISMATCH,
+        )
+    canonical_name = str(mod_row["module_name"])
+    scope = normalize_module_name(canonical_name)
+    deleted = dial_repo.delete_by_scope_and_dial(
+        scope=scope,
+        route_type=route_type,
+        route=route,
+    )
+    if not deleted:
+        raise WireValidationError(
+            f"no matching dial for module {module_id!r}",
+            code=ErrorCode.DIAL_NOT_FOUND,
+        )
+    _sync_legacy_route_to_primary_dial(
+        conn,
+        scope=scope,
+        is_core=False,
+        module_row_name=canonical_name,
+        now_ts=now_ts,
+    )
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="remove_module_route_response",
+        success_code=SuccessCode.MODULE_ROUTE_REMOVED,
+        detail="Module dial removed.",
+        payload={
+            "module_id": canonical_name,
+            "route_type": route_type,
+            "route": route,
         },
         clock=clock,
     )
