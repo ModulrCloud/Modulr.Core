@@ -7,7 +7,8 @@ export function hashString(s: string): number {
 }
 
 export type MockModuleMetrics = {
-  connections: number;
+  /** In-flight / queued work touching this module (homepage card). */
+  activeJobs: number;
   modules: number;
   orgs: number;
   users: number;
@@ -53,7 +54,7 @@ export function getMockMetrics(moduleKey: string): MockModuleMetrics {
   if (key.toLowerCase() === "modulr.core") {
     const modules = 12408;
     return {
-      connections: 847,
+      activeJobs: 847,
       modules,
       orgs: 892,
       users: 45120,
@@ -64,7 +65,7 @@ export function getMockMetrics(moduleKey: string): MockModuleMetrics {
   const h = hashString(key);
   const modules = 3200 + (h % 9800);
   return {
-    connections: 210 + (h % 920),
+    activeJobs: 210 + (h % 920),
     modules,
     orgs: 48 + (h % 510),
     users: 1800 + (h % 42000),

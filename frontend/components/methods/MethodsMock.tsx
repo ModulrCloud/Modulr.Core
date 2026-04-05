@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
@@ -8,6 +15,11 @@ import { ModulrSelect } from "@/components/ui/ModulrSelect";
 import { executeGetProtocolVersion, executeSignedCoreOperation } from "@/lib/coreApi";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 import { formatClientError } from "@/lib/formatClientError";
+import {
+  composeReportModuleStateDetailJson,
+  defaultReportModuleDashboard,
+  reportModuleStateMockFormPatch,
+} from "@/lib/reportModuleStateDetail";
 
 import {
   buildMockMethodResponse,
@@ -17,6 +29,7 @@ import {
   type MethodDef,
 } from "./mockMethodCatalog";
 import { PrettyMockResponse } from "./PrettyMockResponse";
+import { ReportModuleStateDashboardFields } from "./ReportModuleStateDashboardFields";
 
 const fieldClass =
   "mt-1 w-full rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] px-3 py-2 text-sm text-[var(--modulr-text)] outline-none ring-[var(--modulr-accent)] placeholder:text-[var(--modulr-text-muted)] focus:ring-2";
@@ -63,7 +76,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. Removes one dial matching module_id + route_type + route. modulr.core: bootstrap when locked; registered modules: module signing key.";
   }
   if (methodId === "report_module_state") {
-    return "Signs with the 64-char hex Ed25519 seed from Settings → Methods (dev); it must match module_id’s registered signing_public_key. modulr.core cannot report (not in modules table).";
+    return "Signs with the 64-char hex Ed25519 seed from Settings → Methods (dev); must match module_id’s registered key. Core requires detail JSON (schema v1) built from the metrics fields below. Lifecycle phase is coarse mode, not the same as heartbeat liveness.";
   }
   if (methodId === "get_module_state") {
     return "Same signing path. Read-only: latest stored snapshot for module_id (nulls if never reported). modulr.core is allowed even without a modules row.";
@@ -78,6 +91,7 @@ export function MethodsMock() {
   const [methodSearch, setMethodSearch] = useState("");
   const [methodPage, setMethodPage] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [reportDashboard, setReportDashboard] = useState(defaultReportModuleDashboard);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -134,6 +148,12 @@ export function MethodsMock() {
     });
     setValues(next);
   }, [selected]);
+
+  useEffect(() => {
+    if (selected?.id === "report_module_state") {
+      setReportDashboard(defaultReportModuleDashboard());
+    }
+  }, [selected?.id]);
 
   const setParam = useCallback((name: string, v: string) => {
     setValues((prev) => ({ ...prev, [name]: v }));
@@ -296,14 +316,18 @@ export function MethodsMock() {
       }
       const moduleId = values.module_id?.trim() ?? "";
       const statePhase = values.state_phase?.trim() ?? "";
-      const detail = values.detail?.trim();
+      const composed = composeReportModuleStateDetailJson(values, reportDashboard);
+      if (!composed.ok) {
+        setError(composed.error);
+        return;
+      }
       setLoading(true);
       try {
         const payload: Record<string, unknown> = {
           module_id: moduleId,
           state_phase: statePhase,
+          detail: composed.detail,
         };
-        if (detail) payload.detail = detail;
         const data = await executeSignedCoreOperation(base, "report_module_state", payload, {
           ed25519SeedHex: seed,
         });
@@ -393,7 +417,7 @@ export function MethodsMock() {
     } finally {
       setLoading(false);
     }
-  }, [selected, values, settings]);
+  }, [selected, values, settings, reportDashboard]);
 
   const safeExecute = useCallback(() => {
     void runExecute().catch((e: unknown) => {
@@ -401,6 +425,11 @@ export function MethodsMock() {
       setLoading(false);
     });
   }, [runExecute]);
+
+  const fillReportModuleStateMock = useCallback(() => {
+    setReportDashboard(defaultReportModuleDashboard());
+    setValues((prev) => ({ ...prev, ...reportModuleStateMockFormPatch() }));
+  }, []);
 
   return (
     <div className="flex flex-col gap-8">
@@ -436,7 +465,7 @@ export function MethodsMock() {
       </GlassPanel>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <GlassPanel className="p-4 sm:p-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto">
+        <GlassPanel className="modulr-scrollbar p-4 sm:p-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
             Category
           </p>
@@ -580,6 +609,17 @@ export function MethodsMock() {
               result={result}
               liveSigned={LIVE_SIGNED_METHOD_IDS.has(selected.id)}
               liveHint={liveExecuteHint(selected.id)}
+              fillReportModuleStateMock={
+                selected.id === "report_module_state" ? fillReportModuleStateMock : undefined
+              }
+              afterParams={
+                selected.id === "report_module_state" ? (
+                  <ReportModuleStateDashboardFields
+                    dashboard={reportDashboard}
+                    setDashboard={setReportDashboard}
+                  />
+                ) : undefined
+              }
             />
           ) : (
             <GlassPanel className="p-8">
@@ -606,6 +646,8 @@ function MethodPanel({
   result,
   liveSigned,
   liveHint,
+  fillReportModuleStateMock,
+  afterParams,
 }: {
   method: MethodDef;
   values: Record<string, string>;
@@ -616,6 +658,8 @@ function MethodPanel({
   result: Record<string, unknown> | null;
   liveSigned: boolean;
   liveHint: string;
+  fillReportModuleStateMock?: () => void;
+  afterParams?: ReactNode;
 }) {
   const lastFieldSubmit = useCallback(
     (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, multiline: boolean) => {
@@ -666,9 +710,20 @@ function MethodPanel({
       </div>
 
       <div className="mt-6 rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 p-4 sm:p-5">
-        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
-          Parameters
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+            Parameters
+          </p>
+          {fillReportModuleStateMock ? (
+            <button
+              type="button"
+              onClick={fillReportModuleStateMock}
+              className="shrink-0 rounded-md border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] px-2.5 py-1 text-[11px] font-medium text-[var(--modulr-text)] transition-colors hover:border-[var(--modulr-accent)]/40 hover:text-[var(--modulr-accent)]"
+            >
+              Test mock data
+            </button>
+          ) : null}
+        </div>
         {method.params.length === 0 ? (
           <p className="modulr-text-muted mt-3 text-sm">No parameters for this method.</p>
         ) : (
@@ -677,7 +732,10 @@ function MethodPanel({
               const isLastField = idx === method.params.length - 1;
               return (
                 <div key={p.name}>
-                  <label className="text-xs font-medium text-[var(--modulr-text-muted)]" htmlFor={`m-${method.id}-${p.name}`}>
+                  <label
+                    className="text-xs font-medium text-[var(--modulr-text-muted)]"
+                    htmlFor={`m-${method.id}-${p.name}`}
+                  >
                     {p.label}
                     {p.required === false ? (
                       <span className="font-normal text-[var(--modulr-text-muted)]"> (optional)</span>
@@ -705,7 +763,7 @@ function MethodPanel({
                       onKeyDown={isLastField ? (e) => lastFieldSubmit(e, true) : undefined}
                       placeholder={p.placeholder}
                       rows={4}
-                      className={`${fieldClass} resize-y font-mono text-xs leading-relaxed`}
+                      className={`${fieldClass} modulr-scrollbar resize-y font-mono text-xs leading-relaxed`}
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -727,6 +785,8 @@ function MethodPanel({
             })}
           </div>
         )}
+
+        {afterParams}
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <button

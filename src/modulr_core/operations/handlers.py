@@ -35,7 +35,6 @@ from modulr_core.operations.payload_util import (
     optional_ed25519_public_key_hex,
     optional_int,
     optional_json_value,
-    optional_str,
     require_dict,
     require_str,
 )
@@ -62,7 +61,291 @@ _MAX_METRICS_CANONICAL_BYTES = 65_536
 _MODULE_STATE_PHASES: frozenset[str] = frozenset(
     ("running", "syncing", "degraded", "maintenance"),
 )
-_MAX_MODULE_STATE_DETAIL_CHARS = 2048
+_MAX_MODULE_STATE_DETAIL_CHARS = 16_384
+
+_MODULE_STATE_DETAIL_SCHEMA_VERSION = 1
+_MODULE_STATE_DETAIL_METRIC_KEYS: tuple[str, ...] = (
+    "total_users",
+    "active_users",
+    "subscribers",
+    "validators",
+    "providers",
+    "active_jobs",
+)
+_MAX_DASHBOARD_CARDS = 10
+_MAX_DASHBOARD_PIES = 4
+_MAX_PIE_SLICES = 5
+_MAX_DASHBOARD_CARD_DESCRIPTION_CHARS = 280
+_MAX_DASHBOARD_PIE_DESCRIPTION_CHARS = 280
+
+
+def _json_nonneg_int(obj: dict[str, Any], path: str, key: str) -> int:
+    if key not in obj:
+        raise WireValidationError(
+            f"{path}.{key} is required",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    v = obj[key]
+    if type(v) is bool:
+        raise WireValidationError(
+            f"{path}.{key} must be a non-negative integer",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if type(v) is int and v >= 0:
+        return v
+    if isinstance(v, float) and v.is_integer() and v >= 0:
+        return int(v)
+    raise WireValidationError(
+        f"{path}.{key} must be a non-negative integer",
+        code=ErrorCode.PAYLOAD_INVALID,
+    )
+
+
+def _json_pct_int(obj: dict[str, Any], path: str, key: str) -> int:
+    if key not in obj:
+        raise WireValidationError(
+            f"{path}.{key} is required",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    v = obj[key]
+    if type(v) is bool:
+        raise WireValidationError(
+            f"{path}.{key} must be an integer 0..100",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if type(v) is int and 0 <= v <= 100:
+        return v
+    if isinstance(v, float) and v.is_integer() and 0 <= v <= 100:
+        return int(v)
+    raise WireValidationError(
+        f"{path}.{key} must be an integer 0..100",
+        code=ErrorCode.PAYLOAD_INVALID,
+    )
+
+
+def _validate_module_state_dashboard_cards(root: dict[str, Any]) -> None:
+    dc = root.get("dashboard_cards")
+    if not isinstance(dc, list):
+        raise WireValidationError(
+            "payload.detail.dashboard_cards must be a list",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    n = len(dc)
+    if n < 1 or n > _MAX_DASHBOARD_CARDS:
+        raise WireValidationError(
+            "payload.detail.dashboard_cards must have length "
+            f"between 1 and {_MAX_DASHBOARD_CARDS} inclusive",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    for i, item in enumerate(dc):
+        if not isinstance(item, dict):
+            raise WireValidationError(
+                f"payload.detail.dashboard_cards[{i}] must be an object",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        title = item.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise WireValidationError(
+                f"payload.detail.dashboard_cards[{i}].title must be a non-empty string",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        base = f"payload.detail.dashboard_cards[{i}]"
+        _json_nonneg_int(item, base, "value")
+        desc = item.get("description")
+        if not isinstance(desc, str) or not desc.strip():
+            raise WireValidationError(
+                f"payload.detail.dashboard_cards[{i}].description must be a "
+                "non-empty string",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        if len(desc) > _MAX_DASHBOARD_CARD_DESCRIPTION_CHARS:
+            mx = _MAX_DASHBOARD_CARD_DESCRIPTION_CHARS
+            raise WireValidationError(
+                f"payload.detail.dashboard_cards[{i}].description must be at "
+                f"most {mx} characters",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+
+
+def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
+    dp = root.get("dashboard_pies")
+    if not isinstance(dp, list):
+        raise WireValidationError(
+            "payload.detail.dashboard_pies must be a list",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if len(dp) > _MAX_DASHBOARD_PIES:
+        raise WireValidationError(
+            f"payload.detail.dashboard_pies must have at most {_MAX_DASHBOARD_PIES} "
+            "entries",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    for i, pie in enumerate(dp):
+        if not isinstance(pie, dict):
+            raise WireValidationError(
+                f"payload.detail.dashboard_pies[{i}] must be an object",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        mn = pie.get("metric_name")
+        if not isinstance(mn, str) or not mn.strip():
+            raise WireValidationError(
+                f"payload.detail.dashboard_pies[{i}].metric_name must be a "
+                "non-empty string",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        pbase = f"payload.detail.dashboard_pies[{i}]"
+        _json_nonneg_int(pie, pbase, "total")
+        desc = pie.get("description")
+        if desc is not None:
+            if not isinstance(desc, str):
+                raise WireValidationError(
+                    f"{pbase}.description must be a string or null",
+                    code=ErrorCode.PAYLOAD_INVALID,
+                )
+            if len(desc) > _MAX_DASHBOARD_PIE_DESCRIPTION_CHARS:
+                mx = _MAX_DASHBOARD_PIE_DESCRIPTION_CHARS
+                raise WireValidationError(
+                    f"{pbase}.description must be at most {mx} characters",
+                    code=ErrorCode.PAYLOAD_INVALID,
+                )
+        slices = pie.get("slices")
+        if not isinstance(slices, list):
+            raise WireValidationError(
+                f"{pbase}.slices must be a list",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        ns = len(slices)
+        if ns < 1 or ns > _MAX_PIE_SLICES:
+            raise WireValidationError(
+                f"{pbase}.slices must have length between 1 and "
+                f"{_MAX_PIE_SLICES} inclusive",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        total_pct = 0
+        for j, sl in enumerate(slices):
+            if not isinstance(sl, dict):
+                raise WireValidationError(
+                    f"{pbase}.slices[{j}] must be an object",
+                    code=ErrorCode.PAYLOAD_INVALID,
+                )
+            lab = sl.get("label")
+            if not isinstance(lab, str) or not lab.strip():
+                raise WireValidationError(
+                    f"{pbase}.slices[{j}].label must be a non-empty string",
+                    code=ErrorCode.PAYLOAD_INVALID,
+                )
+            pj = _json_pct_int(sl, f"{pbase}.slices[{j}]", "percent")
+            total_pct += pj
+        if total_pct != 100:
+            raise WireValidationError(
+                f"{pbase}.slices percent values must sum to 100 "
+                f"(got {total_pct})",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+
+
+def _normalize_module_state_detail_json(detail_raw: str) -> str:
+    """Parse ``detail`` JSON, validate dashboard metrics schema v1.
+
+    Returns compact JSON text for storage.
+    """
+    s = detail_raw.strip()
+    if not s:
+        raise WireValidationError(
+            "payload.detail is required (JSON dashboard metrics, schema_version 1)",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if len(s) > _MAX_MODULE_STATE_DETAIL_CHARS:
+        mx = _MAX_MODULE_STATE_DETAIL_CHARS
+        raise WireValidationError(
+            f"payload.detail must be at most {mx} characters",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    try:
+        root: Any = json.loads(s)
+    except json.JSONDecodeError as e:
+        raise WireValidationError(
+            f"payload.detail must be valid JSON: {e}",
+            code=ErrorCode.PAYLOAD_INVALID,
+        ) from e
+    if not isinstance(root, dict):
+        raise WireValidationError(
+            "payload.detail JSON must be an object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if root.get("schema_version") != _MODULE_STATE_DETAIL_SCHEMA_VERSION:
+        ver = _MODULE_STATE_DETAIL_SCHEMA_VERSION
+        raise WireValidationError(
+            f"payload.detail.schema_version must be {ver}",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    metrics = root.get("metrics")
+    if not isinstance(metrics, dict):
+        raise WireValidationError(
+            "payload.detail.metrics must be an object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    for mk in _MODULE_STATE_DETAIL_METRIC_KEYS:
+        _json_nonneg_int(metrics, "payload.detail.metrics", mk)
+    vs = root.get("validator_status_pct")
+    if not isinstance(vs, dict):
+        raise WireValidationError(
+            "payload.detail.validator_status_pct must be an object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    a = _json_pct_int(vs, "payload.detail.validator_status_pct", "active")
+    b = _json_pct_int(vs, "payload.detail.validator_status_pct", "passive")
+    c = _json_pct_int(vs, "payload.detail.validator_status_pct", "offline")
+    if a + b + c != 100:
+        raise WireValidationError(
+            "payload.detail.validator_status_pct must sum to 100",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    ha = root.get("health_activity_24h")
+    if not isinstance(ha, dict):
+        raise WireValidationError(
+            "payload.detail.health_activity_24h must be an object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    gh = ha.get("granularity_hours")
+    if gh != 1:
+        raise WireValidationError(
+            "payload.detail.health_activity_24h.granularity_hours must be 1",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    points = ha.get("points")
+    if not isinstance(points, list) or len(points) != 24:
+        raise WireValidationError(
+            "payload.detail.health_activity_24h.points must be a list of length 24",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    for i, p in enumerate(points):
+        if isinstance(p, bool) or not isinstance(p, (int, float)):
+            raise WireValidationError(
+                f"payload.detail.health_activity_24h.points[{i}] must be a number",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        if isinstance(p, float) and p != p:
+            raise WireValidationError(
+                f"payload.detail.health_activity_24h.points[{i}] must be a number",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+    _validate_module_state_dashboard_cards(root)
+    _validate_module_state_dashboard_pies(root)
+    if "notes" in root and root["notes"] is not None:
+        if not isinstance(root["notes"], str):
+            raise WireValidationError(
+                "payload.detail.notes must be a string or omitted",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+    normalized = json.dumps(root, separators=(",", ":"), sort_keys=True)
+    if len(normalized) > _MAX_MODULE_STATE_DETAIL_CHARS:
+        raise WireValidationError(
+            f"payload.detail must be at most {_MAX_MODULE_STATE_DETAIL_CHARS} "
+            "characters after normalization",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    return normalized
 
 
 def _parse_submit_route_mode(p: dict[str, Any]) -> str:
@@ -1243,9 +1526,10 @@ def handle_report_module_state(
     Store the latest lifecycle snapshot for a registered module.
 
     Requires ``module_id``, ``state_phase`` (running, syncing, degraded,
-    maintenance), and optional ``detail``. The sender Ed25519 key must match the
-    module's registered ``signing_public_key``. Intended as shared protocol
-    surface so dashboards can aggregate activity without dialing each module.
+    maintenance), and ``detail``: a JSON object (``schema_version`` 1) with
+    dashboard-oriented metrics (user/subscriber/validator/provider/job counts,
+    validator status percentages, 24 hourly health samples). The sender Ed25519
+    key must match the module's registered ``signing_public_key``.
 
     Args:
         validated: Verified inbound envelope and signing preimage.
@@ -1258,8 +1542,8 @@ def handle_report_module_state(
         and ``reported_at``.
 
     Raises:
-        WireValidationError: Unknown module, identity mismatch, invalid phase, or
-            detail too long.
+        WireValidationError: Unknown module, identity mismatch, invalid phase,
+            invalid or missing ``detail`` JSON, or detail too large.
     """
     del settings
     env = validated.envelope
@@ -1271,18 +1555,8 @@ def handle_report_module_state(
             f"payload.state_phase must be one of {sorted(_MODULE_STATE_PHASES)}",
             code=ErrorCode.INVALID_STATUS,
         )
-    detail_raw = optional_str(p, "detail")
-    detail: str | None
-    if detail_raw is None:
-        detail = None
-    else:
-        detail = detail_raw.strip() or None
-        if detail is not None and len(detail) > _MAX_MODULE_STATE_DETAIL_CHARS:
-            raise WireValidationError(
-                f"payload.detail must be at most {_MAX_MODULE_STATE_DETAIL_CHARS} "
-                "characters",
-                code=ErrorCode.PAYLOAD_INVALID,
-            )
+    detail_in = require_str(p, "detail")
+    detail = _normalize_module_state_detail_json(detail_in)
 
     modules = ModulesRepository(conn)
     mod_row = modules.get_by_name(module_id)

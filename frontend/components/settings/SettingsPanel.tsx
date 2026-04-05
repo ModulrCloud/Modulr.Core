@@ -91,7 +91,7 @@ export function SettingsPanel() {
           </button>
         </header>
 
-        <div className="flex-1 space-y-8 overflow-y-auto px-5 py-5">
+        <div className="modulr-scrollbar flex-1 space-y-8 overflow-y-auto px-5 py-5">
           <section>
             <h3 className="font-modulr-display mb-3 text-sm font-bold text-[var(--modulr-accent)]">
               Profile
