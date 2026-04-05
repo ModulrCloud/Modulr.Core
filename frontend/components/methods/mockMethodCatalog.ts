@@ -12,7 +12,7 @@ export type MethodParam = {
   multiline?: boolean;
 };
 
-/** Who the operation is for in the product story (matches planned wire catalog). */
+/** Which product slice this method belongs to (matches planned wire catalog). */
 export type MethodCategory = "protocol" | "validator" | "provider" | "client";
 
 export const METHOD_CATEGORY_TABS: readonly {
@@ -79,7 +79,7 @@ export const METHOD_CATALOG: MethodDef[] = [
   {
     id: "get_module_methods",
     title: "get_module_methods",
-    summary: "List wire operations a module advertises (for explorers and clients).",
+    summary: "List wire methods a module advertises (for explorers and clients).",
     category: "validator",
     params: [
       {
@@ -399,7 +399,7 @@ function stableAddr(seed: string): string {
   return `0x${hex.slice(0, 40)}`;
 }
 
-/** Wire operations modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
+/** Wire method names modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
 const CORE_OPERATION_NAMES = [
   "get_module_methods",
   "get_module_route",
