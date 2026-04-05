@@ -352,7 +352,10 @@ def handle_get_module_methods(
             request_message_id=env["message_id"],
             operation_response="get_module_methods_response",
             success_code=SuccessCode.MODULE_METHODS_RETURNED,
-            detail="Full wire catalog for modulr.core (coordination + protocol surface).",
+            detail=(
+                "Full wire catalog for modulr.core "
+                "(coordination + protocol surface)."
+            ),
             payload=build_core_module_methods_payload(module_id=module_id),
             clock=clock,
         )
