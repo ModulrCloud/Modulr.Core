@@ -6,8 +6,6 @@ type ColorMode = "dark" | "light";
 
 /** Modulr accent — paddle + ball */
 const ACCENT_GOLD = { r: 255, g: 183, b: 0 };
-/** Secondary / brick accent (#FFD857) */
-const BRICK = { r: 255, g: 216, b: 87 };
 
 const PADDLE_MARGIN_LEFT = 44;
 const PADDLE_THICK = 11;
@@ -24,7 +22,60 @@ const FAIL_X = 10;
 /** Pause with win message before rebuilding the wall (ms). */
 const WIN_CELEBRATION_MS = 2800;
 
-type Brick = { x: number; y: number; w: number; h: number; alive: boolean };
+type Brick = { x: number; y: number; w: number; h: number; alive: boolean; hueShift: number };
+
+type BrickPalette = { h: number; s: number; lMid: number };
+
+function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
+  const l01 = clamp(l, 0, 1);
+  const s01 = clamp(s, 0, 1);
+  const hh = ((h % 360) + 360) % 360;
+  const a = s01 * Math.min(l01, 1 - l01);
+  const f = (n: number) => {
+    const k = (n + hh / 30) % 12;
+    return l01 - a * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1));
+  };
+  return {
+    r: Math.round(255 * f(0)),
+    g: Math.round(255 * f(8)),
+    b: Math.round(255 * f(4)),
+  };
+}
+
+/** Skip near-black / near-white and very grey fills so bricks read on dark or light page bg. */
+function isTooMuted(r: number, g: number, b: number): boolean {
+  const mx = Math.max(r, g, b);
+  const mn = Math.min(r, g, b);
+  if (mx < 34 || mn > 245) return true;
+  if (mx - mn < 20) return true;
+  return false;
+}
+
+function pickBrickPalette(): BrickPalette {
+  for (let i = 0; i < 28; i++) {
+    const h = Math.random() * 360;
+    const s = 0.55 + Math.random() * 0.38;
+    const lMid = 0.3 + Math.random() * 0.24;
+    const dark = hslToRgb(h, s, clamp(lMid + 0.12, 0, 1));
+    const light = hslToRgb(h, s, clamp(lMid - 0.1, 0, 1));
+    if (!isTooMuted(dark.r, dark.g, dark.b) && !isTooMuted(light.r, light.g, light.b)) {
+      return { h, s, lMid };
+    }
+  }
+  return { h: 28 + Math.random() * 200, s: 0.7, lMid: 0.38 };
+}
+
+function brickFillRgb(
+  palette: BrickPalette,
+  dark: boolean,
+  hueShift: number,
+): { r: number; g: number; b: number } {
+  const h = (palette.h + hueShift + 360) % 360;
+  const L = dark
+    ? clamp(palette.lMid + 0.12, 0.4, 0.68)
+    : clamp(palette.lMid - 0.11, 0.22, 0.52);
+  return hslToRgb(h, palette.s, L);
+}
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -62,7 +113,14 @@ function buildBricks(w: number, h: number): Brick[] {
       if (Math.random() > 0.78) continue;
       const x = w - marginR - bw - c * (bw + gap);
       const y = marginTop + r * (bh + gap);
-      bricks.push({ x, y, w: bw, h: bh, alive: true });
+      bricks.push({
+        x,
+        y,
+        w: bw,
+        h: bh,
+        alive: true,
+        hueShift: (Math.random() - 0.5) * 26,
+      });
     }
   }
   if (bricks.length < 8) {
@@ -134,6 +192,7 @@ export function BrickField({
     /** Vertical paddle: narrow w (x extent), tall h (y extent), center (x,y). */
     const paddle = { x: 0, y: 0, w: PADDLE_THICK, h: PADDLE_LEN_MIN };
     let bricks: Brick[] = [];
+    let brickPalette: BrickPalette = { h: 45, s: 0.72, lMid: 0.38 };
     let aimJitter = 0;
     let aimJitterTarget = 0;
     let jitterAccum = 0;
@@ -163,6 +222,7 @@ export function BrickField({
     }
 
     function newLevel(w: number, h: number) {
+      brickPalette = pickBrickPalette();
       bricks = buildBricks(w, h);
       resetBall(w, h);
     }
@@ -298,14 +358,17 @@ export function BrickField({
       const w = window.innerWidth;
       const h = window.innerHeight;
       const dark = modeRef.current === "dark";
-      const strokeBrick = dark ? "rgba(255, 248, 200, 0.45)" : "rgba(120, 90, 0, 0.35)";
 
       ctx.clearRect(0, 0, w, h);
 
       for (const b of bricks) {
         if (!b.alive) continue;
-        ctx.fillStyle = `rgb(${BRICK.r},${BRICK.g},${BRICK.b})`;
-        ctx.strokeStyle = strokeBrick;
+        const rgb = brickFillRgb(brickPalette, dark, b.hueShift);
+        const lum = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+        ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+        ctx.strokeStyle = dark
+          ? `rgba(255,255,255,${clamp(0.22 + lum * 0.35, 0.2, 0.55)})`
+          : `rgba(0,0,0,${clamp(0.18 + (1 - lum) * 0.25, 0.15, 0.42)})`;
         ctx.lineWidth = dark ? 1 : 1.25;
         const r = 3;
         ctx.beginPath();
@@ -313,7 +376,7 @@ export function BrickField({
         ctx.fill();
         ctx.stroke();
         if (dark) {
-          ctx.fillStyle = "rgba(255,255,255,0.14)";
+          ctx.fillStyle = "rgba(255,255,255,0.12)";
           const hw = Math.min(4, b.w * 0.35);
           ctx.fillRect(b.x + 2, b.y + 2, hw, b.h - 4);
         }
