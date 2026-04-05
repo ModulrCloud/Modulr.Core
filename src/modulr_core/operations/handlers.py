@@ -249,7 +249,34 @@ def handle_get_protocol_methods(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    """Return protocol-surface method names (version, liveness, protocol discovery)."""
+    """
+    Handle ``get_protocol_methods``: return the sorted names of wire operations
+    that belong to the shared protocol surface.
+
+    Validators and modules are expected to understand this set so they can
+    negotiate version, discover the protocol method list itself, and exchange
+    heartbeat traffic. It is intentionally smaller than the full Core operation
+    list returned by ``get_module_methods`` for ``modulr.core``.
+
+    The inbound envelope must carry an empty JSON object for ``payload``;
+    anything else raises ``WireValidationError`` with ``PAYLOAD_INVALID``. The
+    outbound payload contains ``methods`` (list of strings) and ``method_count``.
+
+    Args:
+        validated: Inbound message after signature verification and structural
+            validation (envelope + operation routing).
+        settings: Active Core configuration; unused here but required so all
+            operation handlers share the same call shape.
+        conn: SQLite connection to Core's database; unused for this read-only
+            metadata response.
+        clock: Monotonic/epoch clock used when building the success envelope.
+
+    Returns:
+        A success envelope dict suitable for JSON serialization, including
+        ``operation_response`` ``get_protocol_methods_response``, success code
+        ``PROTOCOL_METHODS_RETURNED``, and the ``methods`` / ``method_count``
+        payload fields.
+    """
     del settings, conn
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
