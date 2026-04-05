@@ -84,7 +84,9 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         group="discovery",
         summary="List wire methods advertised for a module (Core or registered).",
         description=(
-            "For modulr.core returns the full coordination catalog with metadata. "
+            "For modulr.core returns Core's full static catalog: coordination "
+            "methods plus protocol_surface entries shared across the network—use "
+            "protocol_surface on each row; not every listed method is Core-only. "
             "For other modules returns manifest-backed methods when stored, else "
             "empty. Requires module_id in the payload."
         ),
@@ -226,9 +228,9 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         summary="Read the latest state snapshot Core stored for a module.",
         description=(
             "Returns fields from the most recent report_module_state for "
-            "module_id, or nulls when nothing was reported yet. For modulr.core "
-            "returns nulls until a snapshot exists. Used by explorers and "
-            "dashboards without dialing the module."
+            "module_id, or nulls when nothing was reported yet. Validators serve "
+            "this read path; ids without a stored row return nulls. Used by "
+            "explorers and dashboards without dialing the module."
         ),
         payload_contract="module_id",
         protocol_surface=True,

@@ -63,7 +63,7 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. Removes one dial matching module_id + route_type + route. modulr.core: bootstrap when locked; registered modules: module signing key.";
   }
   if (methodId === "report_module_state") {
-    return "Same signing path. module_id + state_phase (running, syncing, degraded, maintenance) and optional detail. Sender must be the module’s registered signing key.";
+    return "Signs with the 64-char hex Ed25519 seed from Settings → Methods (dev); it must match module_id’s registered signing_public_key. modulr.core cannot report (not in modules table).";
   }
   if (methodId === "get_module_state") {
     return "Same signing path. Read-only: latest stored snapshot for module_id (nulls if never reported). modulr.core is allowed even without a modules row.";
@@ -287,6 +287,13 @@ export function MethodsMock() {
         setError("Set a Core base URL in settings.");
         return;
       }
+      const seed = settings.methodsDevEd25519SeedHex.trim().toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(seed)) {
+        setError(
+          "report_module_state must be signed with that module’s registered key. Open Settings → Methods (dev) and paste a 64-character hex Ed25519 seed (same secret you registered with for module_id).",
+        );
+        return;
+      }
       const moduleId = values.module_id?.trim() ?? "";
       const statePhase = values.state_phase?.trim() ?? "";
       const detail = values.detail?.trim();
@@ -297,7 +304,9 @@ export function MethodsMock() {
           state_phase: statePhase,
         };
         if (detail) payload.detail = detail;
-        const data = await executeSignedCoreOperation(base, "report_module_state", payload);
+        const data = await executeSignedCoreOperation(base, "report_module_state", payload, {
+          ed25519SeedHex: seed,
+        });
         setResult(data);
       } catch (e: unknown) {
         setError(formatClientError(e));
@@ -384,7 +393,7 @@ export function MethodsMock() {
     } finally {
       setLoading(false);
     }
-  }, [selected, values, settings.coreEndpoints]);
+  }, [selected, values, settings]);
 
   const safeExecute = useCallback(() => {
     void runExecute().catch((e: unknown) => {
@@ -511,7 +520,7 @@ export function MethodsMock() {
                     }
                     title={
                       m.coreSurface
-                        ? "M — implemented on modulr.core in MVP (coordination plane), not reimplemented by arbitrary modules."
+                        ? "M — coordination handler on modulr.core in MVP only; not shown for network-wide protocol_surface methods."
                         : undefined
                     }
                     className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${

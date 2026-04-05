@@ -16,6 +16,11 @@ export type AppSettings = {
   colorMode: ColorMode;
   backgroundEnabled: boolean;
   backgroundPreset: BackgroundPreset;
+  /**
+   * Optional 64-char hex Ed25519 seed for Methods **report_module_state** live calls.
+   * Must match the `module_id` you report for. Dev only; stored in localStorage.
+   */
+  methodsDevEd25519SeedHex: string;
 };
 
 export const SETTINGS_STORAGE_KEY = "modulr.customer-ui.settings";
@@ -25,6 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   colorMode: "dark",
   backgroundEnabled: true,
   backgroundPreset: "fireflies",
+  methodsDevEd25519SeedHex: "",
 };
 
 export function normalizeSettings(raw: unknown): AppSettings {
@@ -62,11 +68,25 @@ export function normalizeSettings(raw: unknown): AppSettings {
   ) {
     backgroundPreset = preset;
   }
+
+  let methodsDevEd25519SeedHex = DEFAULT_SETTINGS.methodsDevEd25519SeedHex;
+  const seedRaw = o.methodsDevEd25519SeedHex;
+  if (typeof seedRaw === "string") {
+    const t = seedRaw
+      .trim()
+      .toLowerCase()
+      .replace(/^0x/, "")
+      .replace(/[^0-9a-f]/g, "")
+      .slice(0, 64);
+    methodsDevEd25519SeedHex = t;
+  }
+
   return {
     coreEndpoints: coreEndpoints.length ? coreEndpoints : [...DEFAULT_SETTINGS.coreEndpoints],
     colorMode,
     backgroundEnabled,
     backgroundPreset,
+    methodsDevEd25519SeedHex,
   };
 }
 

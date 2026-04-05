@@ -317,9 +317,11 @@ def handle_get_module_methods(
     Handle ``get_module_methods``: return a wire method catalog or an empty list.
 
     For ``modulr.core``, returns the full static Core catalog (same entry shape
-    as ``get_protocol_methods``, plus every coordination method). For a
-    registered module without a stored manifest, returns ``methods`` as ``[]``
-    with ``catalog_schema_version`` and ``module_id``.
+    as ``get_protocol_methods``, plus coordination methods). Rows include
+    ``protocol_surface`` where the method is shared network-wide—not every entry
+    is Core-only coordination. For a registered module without a stored manifest,
+    returns ``methods`` as ``[]`` with ``catalog_schema_version`` and
+    ``module_id``.
 
     Args:
         validated: Inbound message after signature verification and structural
@@ -350,7 +352,7 @@ def handle_get_module_methods(
             request_message_id=env["message_id"],
             operation_response="get_module_methods_response",
             success_code=SuccessCode.MODULE_METHODS_RETURNED,
-            detail="Wire method catalog for modulr.core.",
+            detail="Full wire catalog for modulr.core (coordination + protocol surface).",
             payload=build_core_module_methods_payload(module_id=module_id),
             clock=clock,
         )

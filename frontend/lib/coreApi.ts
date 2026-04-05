@@ -44,11 +44,17 @@ function errFromEnvelope(data: Record<string, unknown>, status: number): string 
 /**
  * Signed `POST /message` using the same canonical JSON + Ed25519 rules as the dev playground.
  */
+export type SignedPostOptions = {
+  /** When set, signs with this Ed25519 seed instead of a random dev key. */
+  ed25519SeedHex?: string;
+};
+
 export async function postSignedCoreOperation(
   baseUrl: string,
   protocolVersion: string,
   operation: string,
   payload: Record<string, unknown>,
+  opts?: SignedPostOptions,
 ): Promise<Record<string, unknown>> {
   const base = primaryCoreBaseUrl([baseUrl]);
   if (!base) {
@@ -58,6 +64,7 @@ export async function postSignedCoreOperation(
     protocolVersion,
     operation,
     payload,
+    ed25519SeedHex: opts?.ed25519SeedHex,
   });
   const res = await fetch(`${base}/message`, {
     method: "POST",
@@ -83,9 +90,10 @@ export async function executeSignedCoreOperation(
   baseUrl: string,
   operation: string,
   payload: Record<string, unknown>,
+  opts?: SignedPostOptions,
 ): Promise<Record<string, unknown>> {
   const { version } = await fetchCoreVersion(baseUrl);
-  return postSignedCoreOperation(baseUrl, version, operation, payload);
+  return postSignedCoreOperation(baseUrl, version, operation, payload, opts);
 }
 
 export async function executeGetProtocolVersion(baseUrl: string): Promise<Record<string, unknown>> {

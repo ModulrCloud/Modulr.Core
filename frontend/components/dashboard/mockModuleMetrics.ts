@@ -114,7 +114,7 @@ export function getMockUserTypeMix(moduleKey: string): MockPieSlice[] {
   const h = hashString(key + ":userMix");
   const w0 = 52 + (h % 28);
   const w1 = 18 + ((h >> 4) % 22);
-  let c = Math.round((total * w0) / 100);
+  const c = Math.round((total * w0) / 100);
   let v = Math.round((total * w1) / 100);
   let p = total - c - v;
   if (p < 0) {
