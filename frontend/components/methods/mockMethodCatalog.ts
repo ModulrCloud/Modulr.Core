@@ -205,7 +205,8 @@ export const METHOD_CATALOG: MethodDef[] = [
   {
     id: "report_module_state",
     title: "report_module_state",
-    summary: "Module reports where it is in its lifecycle (syncing, running, degraded, …).",
+    summary:
+      "Report lifecycle phase and optional detail — shared protocol surface every module is expected to use so validators can aggregate dashboard metrics.",
     category: "validator",
     coreSurface: true,
     params: [
@@ -239,7 +240,8 @@ export const METHOD_CATALOG: MethodDef[] = [
   {
     id: "get_module_state",
     title: "get_module_state",
-    summary: "Fetch the last state snapshot Core has for a module (from recent report_module_state calls).",
+    summary:
+      "Read the latest snapshot Core stored from report_module_state (nulls until that module has reported).",
     category: "validator",
     coreSurface: true,
     params: [

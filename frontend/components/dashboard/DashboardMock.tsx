@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { CountUpNumber } from "@/components/dashboard/CountUpNumber";
-import { getMockMetrics } from "@/components/dashboard/mockModuleMetrics";
+import {
+  getMockMetrics,
+  getMockUserTypeMix,
+  getMockValidatorStatusMix,
+} from "@/components/dashboard/mockModuleMetrics";
+import { MockDonutChart } from "@/components/dashboard/MockDonutChart";
 import { MockHealthActivityChart } from "@/components/dashboard/MockHealthActivityChart";
 import { GlassPanel } from "@/components/shell/GlassPanel";
 
@@ -40,7 +45,16 @@ export function DashboardMock() {
     () => getMockMetrics(moduleId),
     [moduleId],
   );
+  const userTypeSlices = useMemo(
+    () => getMockUserTypeMix(moduleId),
+    [moduleId],
+  );
+  const validatorStatusSlices = useMemo(
+    () => getMockValidatorStatusMix(moduleId),
+    [moduleId],
+  );
   const chartSeed = moduleId.trim() || DEFAULT_MODULE_ID;
+  const isCoreModule = moduleId.trim().toLowerCase() === "modulr.core";
 
   return (
     <div className="flex flex-col gap-8">
@@ -105,10 +119,85 @@ export function DashboardMock() {
               hint="Distinct users where identity is available."
             />
             <MetricCard
-              label="Active validators"
+              label="Validators"
               value={metrics.validators}
               hint="Validators participating for this module / chain context."
             />
+            {!isCoreModule ? (
+              <MetricCard
+                label="Providers subscribed"
+                value={metrics.providersSubscribed}
+                hint="Providers actively subscribed to this module’s services."
+              />
+            ) : null}
+          </div>
+
+          <div className="mt-8 border-t border-[var(--modulr-glass-border)] pt-8">
+            <h2
+              id="composition-heading"
+              className="font-modulr-display text-sm font-bold text-[var(--modulr-text)]"
+            >
+              Composition
+            </h2>
+            <p className="modulr-text-muted mt-2 max-w-3xl text-sm leading-relaxed">
+              Default donut pair:{" "}
+              <span className="font-medium text-[var(--modulr-text)]">user mix</span> (clients,
+              validator-role users, providers) and{" "}
+              <span className="font-medium text-[var(--modulr-text)]">validator health</span>{" "}
+              (active vs passive vs offline — center total matches the Validators card). Hover a
+              slice for count and percentage. Grid supports up to four pies for module-specific
+              views later.
+            </p>
+            <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 p-4 sm:p-5 xl:min-w-0">
+                <p className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+                  User mix
+                </p>
+                <p className="modulr-text-muted mx-auto mt-1 max-w-[14rem] text-center text-[11px] leading-snug">
+                  Share of all users by role (not the validator fleet count).
+                </p>
+                <div className="mt-4">
+                  <MockDonutChart
+                    slices={userTypeSlices}
+                    centerLabel="USERS"
+                    ariaLabel="User mix: clients, validator users, and providers."
+                    legendMode="hover"
+                  />
+                </div>
+              </div>
+              <div className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 p-4 sm:p-5">
+                <p className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+                  Validator status
+                </p>
+                <p className="modulr-text-muted mx-auto mt-1 max-w-[14rem] text-center text-[11px] leading-snug">
+                  Active, passive (standby), and offline vs heartbeat window (mock).
+                </p>
+                <div className="mt-4">
+                  <MockDonutChart
+                    slices={validatorStatusSlices}
+                    centerLabel="VALIDATORS"
+                    ariaLabel="Validator status: active, passive, and offline."
+                    legendMode="hover"
+                  />
+                </div>
+              </div>
+              <div className="hidden min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)]/15 p-4 text-center xl:flex">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--modulr-text-muted)]">
+                  Reserved
+                </p>
+                <p className="modulr-text-muted mt-2 max-w-[10rem] text-[11px] leading-snug">
+                  e.g. modulr.core–specific mix when you define it.
+                </p>
+              </div>
+              <div className="hidden min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)]/15 p-4 text-center xl:flex">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--modulr-text-muted)]">
+                  Reserved
+                </p>
+                <p className="modulr-text-muted mt-2 max-w-[10rem] text-[11px] leading-snug">
+                  Fourth pie slot — same row on wide screens.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-8 border-t border-[var(--modulr-glass-border)] pt-8">

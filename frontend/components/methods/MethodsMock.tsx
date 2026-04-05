@@ -34,8 +34,10 @@ const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "lookup_module",
   "get_module_methods",
   "get_module_route",
+  "get_module_state",
   "submit_module_route",
   "remove_module_route",
+  "report_module_state",
 ]);
 
 function liveExecuteHint(methodId: string): string {
@@ -59,6 +61,12 @@ function liveExecuteHint(methodId: string): string {
   }
   if (methodId === "remove_module_route") {
     return "Same signing path. Removes one dial matching module_id + route_type + route. modulr.core: bootstrap when locked; registered modules: module signing key.";
+  }
+  if (methodId === "report_module_state") {
+    return "Same signing path. module_id + state_phase (running, syncing, degraded, maintenance) and optional detail. Sender must be the module’s registered signing key.";
+  }
+  if (methodId === "get_module_state") {
+    return "Same signing path. Read-only: latest stored snapshot for module_id (nulls if never reported). modulr.core is allowed even without a modules row.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -252,6 +260,53 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "get_module_state") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_module_state", {
+          module_id: moduleId,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "report_module_state") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      const statePhase = values.state_phase?.trim() ?? "";
+      const detail = values.detail?.trim();
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = {
+          module_id: moduleId,
+          state_phase: statePhase,
+        };
+        if (detail) payload.detail = detail;
+        const data = await executeSignedCoreOperation(base, "report_module_state", payload);
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (selected.id === "submit_module_route") {
       const base = primaryCoreBaseUrl(settings.coreEndpoints);
       if (!base) {
@@ -360,6 +415,8 @@ export function MethodsMock() {
           <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_methods</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_route</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_state</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">report_module_state</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span>, and{" "}
           <span className="font-medium text-[var(--modulr-text)]">remove_module_route</span>{" "}
           call your configured
