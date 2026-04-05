@@ -2,31 +2,16 @@
 
 from __future__ import annotations
 
+from modulr_core.messages.wire_method_catalog import (
+    core_operation_names,
+    protocol_operation_names,
+)
 from modulr_core.version import MODULE_VERSION
 
 TARGET_MODULE_CORE = "modulr.core"
 
-CORE_OPERATIONS = frozenset({
-    "get_protocol_version",
-    "get_protocol_methods",
-    "get_module_methods",
-    "submit_module_route",
-    "remove_module_route",
-    "get_module_route",
-    "register_module",
-    "lookup_module",
-    "register_name",
-    "register_org",
-    "resolve_name",
-    "reverse_resolve_name",
-    "heartbeat_update",
-})
-
-PROTOCOL_METHOD_OPERATIONS = frozenset({
-    "get_protocol_version",
-    "get_protocol_methods",
-    "heartbeat_update",
-})
+CORE_OPERATIONS = core_operation_names()
+PROTOCOL_METHOD_OPERATIONS = protocol_operation_names()
 
 SUPPORTED_SENDER_KEY_TYPE = "ed25519"
 SUPPORTED_SIGNATURE_ALGORITHM = "ed25519"

@@ -4,9 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 type ColorMode = "dark" | "light";
 
-/** Modulr accent — paddle + ball */
-const ACCENT_GOLD = { r: 255, g: 183, b: 0 };
-
 const PADDLE_MARGIN_LEFT = 44;
 const PADDLE_THICK = 11;
 const PADDLE_LEN_MIN = 96;
@@ -75,6 +72,21 @@ function brickFillRgb(
     ? clamp(palette.lMid + 0.12, 0.4, 0.68)
     : clamp(palette.lMid - 0.11, 0.22, 0.52);
   return hslToRgb(h, palette.s, L);
+}
+
+function rgbLuminance(rgb: { r: number; g: number; b: number }): number {
+  return (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+}
+
+/** Match brick outline contrast (same logic as the brick loop). */
+function strokeStyleForFill(
+  rgb: { r: number; g: number; b: number },
+  dark: boolean,
+): string {
+  const lum = rgbLuminance(rgb);
+  return dark
+    ? `rgba(255,255,255,${clamp(0.22 + lum * 0.35, 0.2, 0.55)})`
+    : `rgba(0,0,0,${clamp(0.18 + (1 - lum) * 0.25, 0.15, 0.42)})`;
 }
 
 function clamp(v: number, lo: number, hi: number) {
@@ -364,11 +376,8 @@ export function BrickField({
       for (const b of bricks) {
         if (!b.alive) continue;
         const rgb = brickFillRgb(brickPalette, dark, b.hueShift);
-        const lum = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
         ctx.fillStyle = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
-        ctx.strokeStyle = dark
-          ? `rgba(255,255,255,${clamp(0.22 + lum * 0.35, 0.2, 0.55)})`
-          : `rgba(0,0,0,${clamp(0.18 + (1 - lum) * 0.25, 0.15, 0.42)})`;
+        ctx.strokeStyle = strokeStyleForFill(rgb, dark);
         ctx.lineWidth = dark ? 1 : 1.25;
         const r = 3;
         ctx.beginPath();
@@ -384,19 +393,28 @@ export function BrickField({
 
       const pL = paddle.x - paddle.w / 2;
       const pT = paddle.y - paddle.h / 2;
-      ctx.fillStyle = `rgb(${ACCENT_GOLD.r},${ACCENT_GOLD.g},${ACCENT_GOLD.b})`;
+      /** Same palette as bricks; slight hue shift so the ball reads distinct at a glance. */
+      const paddleRgb = brickFillRgb(brickPalette, dark, 0);
+      const ballRgb = brickFillRgb(brickPalette, dark, 6);
+      ctx.fillStyle = `rgb(${paddleRgb.r},${paddleRgb.g},${paddleRgb.b})`;
       ctx.beginPath();
       ctx.roundRect(pL, pT, paddle.w, paddle.h, 5);
       ctx.fill();
-      ctx.strokeStyle = dark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.1)";
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = strokeStyleForFill(paddleRgb, dark);
+      ctx.lineWidth = dark ? 1 : 1.25;
       ctx.stroke();
+      if (dark) {
+        ctx.fillStyle = "rgba(255,255,255,0.14)";
+        const hw = Math.min(4, paddle.w * 2.2);
+        ctx.fillRect(pL + 1, pT + 3, hw, paddle.h - 6);
+      }
 
-      ctx.fillStyle = `rgb(${ACCENT_GOLD.r},${ACCENT_GOLD.g},${ACCENT_GOLD.b})`;
+      ctx.fillStyle = `rgb(${ballRgb.r},${ballRgb.g},${ballRgb.b})`;
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = dark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.12)";
+      ctx.strokeStyle = strokeStyleForFill(ballRgb, dark);
+      ctx.lineWidth = dark ? 1 : 1.25;
       ctx.stroke();
     }
 

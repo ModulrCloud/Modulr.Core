@@ -12,7 +12,7 @@ export type MethodParam = {
   multiline?: boolean;
 };
 
-/** Who the operation is for in the product story (matches planned wire catalog). */
+/** Which product slice this method belongs to (matches planned wire catalog). */
 export type MethodCategory = "protocol" | "validator" | "provider" | "client";
 
 export const METHOD_CATEGORY_TABS: readonly {
@@ -79,7 +79,7 @@ export const METHOD_CATALOG: MethodDef[] = [
   {
     id: "get_module_methods",
     title: "get_module_methods",
-    summary: "List wire operations a module advertises (for explorers and clients).",
+    summary: "List wire methods a module advertises (for explorers and clients).",
     category: "validator",
     params: [
       {
@@ -399,7 +399,7 @@ function stableAddr(seed: string): string {
   return `0x${hex.slice(0, 40)}`;
 }
 
-/** Wire operations modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
+/** Wire method names modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
 const CORE_OPERATION_NAMES = [
   "get_module_methods",
   "get_module_route",
@@ -423,6 +423,35 @@ const PROTOCOL_METHOD_NAMES = [
   "heartbeat_update",
 ] as const;
 
+type MockWireMethodRow = {
+  method: string;
+  category: string;
+  group: string;
+  summary: string;
+  description: string;
+  payload_contract: string;
+  protocol_surface: boolean;
+};
+
+function mockCatalogRow(method: string): MockWireMethodRow {
+  const protocolSurface = (PROTOCOL_METHOD_NAMES as readonly string[]).includes(method);
+  let group = "coordination";
+  if (protocolSurface) {
+    if (method === "heartbeat_update") group = "liveness";
+    else if (method === "get_protocol_version") group = "version";
+    else group = "discovery";
+  }
+  return {
+    method,
+    category: protocolSurface ? "protocol" : "validator",
+    group,
+    summary: `Mock summary for ${method}.`,
+    description: `Placeholder catalog text for ${method} in the customer UI mock; live Core returns full metadata (bounded length).`,
+    payload_contract: "mock",
+    protocol_surface: protocolSurface,
+  };
+}
+
 /** Deterministic pretend Core payload — not wired to the real service. */
 export function buildMockMethodResponse(
   operation: string,
@@ -440,9 +469,12 @@ export function buildMockMethodResponse(
         server_time: now,
       };
     case "get_protocol_methods": {
-      const methods = [...PROTOCOL_METHOD_NAMES];
+      const methods = [...PROTOCOL_METHOD_NAMES]
+        .map((m) => mockCatalogRow(m))
+        .sort((a, b) => a.method.localeCompare(b.method));
       return {
         status: "ok",
+        catalog_schema_version: 1,
         methods,
         method_count: methods.length,
         request_id: `req_${(seed >>> 0).toString(16).slice(0, 12)}`,
@@ -462,15 +494,27 @@ export function buildMockMethodResponse(
     }
     case "get_module_methods": {
       const mid = payload.module_id?.trim() || "modulr.core";
-      const base =
-        mid.toLowerCase() === "modulr.core"
-          ? [...CORE_OPERATION_NAMES]
-          : ["ping", "query_state", "submit_batch", "stream_events"];
+      const isCore = mid.toLowerCase() === "modulr.core";
+      const idList = isCore
+        ? [...CORE_OPERATION_NAMES]
+        : ["ping", "query_state", "submit_batch", "stream_events"];
+      const methods = isCore
+        ? idList.map((m) => mockCatalogRow(m)).sort((a, b) => a.method.localeCompare(b.method))
+        : idList.map((m) => ({
+            method: m,
+            category: "provider",
+            group: "workload",
+            summary: `Mock workload method ${m}.`,
+            description: "Non-core module mock entry.",
+            payload_contract: "mock",
+            protocol_surface: false,
+          }));
       return {
         status: "ok",
+        catalog_schema_version: 1,
         module_id: mid,
-        methods: base,
-        method_count: base.length,
+        methods,
+        method_count: methods.length,
         request_id: `req_${(seed >>> 0).toString(16).slice(0, 12)}`,
       };
     }
