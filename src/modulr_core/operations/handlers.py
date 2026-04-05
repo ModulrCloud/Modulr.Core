@@ -254,18 +254,13 @@ def handle_get_protocol_methods(
     clock: EpochClock,
 ) -> dict[str, Any]:
     """
-    Handle ``get_protocol_methods``: return the sorted names of wire operations
-    that belong to the shared protocol surface.
+    Handle ``get_protocol_methods``: return the protocol-surface method catalog.
 
-    Validators and modules are expected to understand this set so they can
-    negotiate version, discover the protocol method list itself, and exchange
-    heartbeat traffic. It is intentionally smaller than the full Core operation
-    list returned by ``get_module_methods`` for ``modulr.core``.
-
-    The inbound envelope must carry an empty JSON object for ``payload``;
-    anything else raises ``WireValidationError`` with ``PAYLOAD_INVALID``. The
-    outbound payload contains ``catalog_schema_version``, ``methods`` (list of
-    catalog objects), and ``method_count``.
+    Each ``methods`` entry includes ``method``, ``category``, ``group``,
+    ``summary``, ``description`` (length-capped in the static catalog),
+    ``payload_contract``, and ``protocol_surface``. The list is sorted by
+    ``method`` name. This surface is smaller than the full Core catalog from
+    ``get_module_methods`` for ``modulr.core``.
 
     Args:
         validated: Inbound message after signature verification and structural
@@ -277,9 +272,13 @@ def handle_get_protocol_methods(
         clock: Monotonic/epoch clock used when building the success envelope.
 
     Returns:
-        A success envelope dict suitable for JSON serialization, including
-        ``operation_response`` ``get_protocol_methods_response``, success code
-        ``PROTOCOL_METHODS_RETURNED``, and the catalog payload fields.
+        Success envelope JSON: ``operation_response``
+        ``get_protocol_methods_response``, ``PROTOCOL_METHODS_RETURNED``, and
+        ``payload`` with ``catalog_schema_version``, ``methods``, ``method_count``.
+
+    Raises:
+        WireValidationError: If ``payload`` is not an empty object
+            (``PAYLOAD_INVALID``).
     """
     del settings, conn
     env = validated.envelope
@@ -306,7 +305,34 @@ def handle_get_module_methods(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    """Return Core wire method catalog for ``modulr.core``; else empty ``methods``."""
+    """
+    Handle ``get_module_methods``: return a wire method catalog or an empty list.
+
+    For ``modulr.core``, returns the full static Core catalog (same entry shape
+    as ``get_protocol_methods``, plus every coordination method). For a
+    registered module without a stored manifest, returns ``methods`` as ``[]``
+    with ``catalog_schema_version`` and ``module_id``.
+
+    Args:
+        validated: Inbound message after signature verification and structural
+            validation.
+        settings: Active Core configuration; unused but kept for handler
+            signature consistency.
+        conn: SQLite connection; used to resolve registered modules and to
+            detect unknown ``module_id``.
+        clock: Time source for the success envelope ``timestamp``.
+
+    Returns:
+        Success envelope with ``get_module_methods_response`` and
+        ``MODULE_METHODS_RETURNED``. Payload includes ``catalog_schema_version``,
+        ``module_id``, ``methods`` (list of catalog dicts or empty), and
+        ``method_count``.
+
+    Raises:
+        WireValidationError: If ``module_id`` is missing, empty, or not a valid
+            dotted name (``INVALID_MODULE_NAME``), or if the module is not
+            registered (``MODULE_NOT_FOUND``).
+    """
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
