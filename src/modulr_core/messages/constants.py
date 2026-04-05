@@ -1,4 +1,10 @@
-"""Wire constants for Modulr.Core inbound validation (MVP)."""
+"""
+Wire constants for Modulr.Core inbound validation (MVP).
+
+``CORE_OPERATIONS`` and ``PROTOCOL_METHOD_OPERATIONS`` are derived from
+``messages.wire_method_catalog`` so operation sets stay aligned with discovery
+payloads.
+"""
 
 from __future__ import annotations
 

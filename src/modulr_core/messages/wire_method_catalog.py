@@ -1,7 +1,9 @@
-"""Static wire method metadata for discovery responses (modulr.core catalog).
+"""Static wire method metadata for Core discovery responses.
 
-``summary`` is one-line UI/docs text. ``description`` is longer but capped by
-``MAX_METHOD_DESCRIPTION_LENGTH`` so payloads stay bounded.
+Drives ``CORE_OPERATIONS`` and ``PROTOCOL_METHOD_OPERATIONS`` in
+``messages.constants``. Each entry becomes a JSON object on the wire; lengths
+are enforced at import via ``MAX_METHOD_SUMMARY_LENGTH`` and
+``MAX_METHOD_DESCRIPTION_LENGTH``.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ def _e(
     payload_contract: str,
     protocol_surface: bool = False,
 ) -> WireMethodCatalogEntry:
+    """Construct a frozen catalog row (internal table builder)."""
     return WireMethodCatalogEntry(
         method=method,
         category=category,
@@ -225,10 +228,22 @@ _validate_catalog()
 
 
 def core_operation_names() -> frozenset[str]:
+    """
+    All wire method names implemented by ``modulr.core`` on the catalog.
+
+    Returns:
+        Set of method name strings (matches keys of ``CORE_WIRE_METHOD_CATALOG``).
+    """
     return frozenset(CORE_WIRE_METHOD_CATALOG.keys())
 
 
 def protocol_operation_names() -> frozenset[str]:
+    """
+    Subset of methods that belong to the shared protocol surface.
+
+    Returns:
+        Set of ``method`` values where ``protocol_surface`` is true.
+    """
     return frozenset(
         e.method for e in CORE_WIRE_METHOD_CATALOG.values() if e.protocol_surface
     )
@@ -247,6 +262,13 @@ def entry_to_payload_dict(entry: WireMethodCatalogEntry) -> dict[str, str | bool
 
 
 def build_protocol_methods_payload() -> dict[str, Any]:
+    """
+    Build the ``get_protocol_methods`` success ``payload`` body.
+
+    Returns:
+        Dict with ``catalog_schema_version``, ``method_count``, and ``methods``
+        (sorted by ``method`` name, protocol surface only).
+    """
     rows = sorted(
         (e for e in CORE_WIRE_METHOD_CATALOG.values() if e.protocol_surface),
         key=lambda x: x.method,
@@ -260,6 +282,17 @@ def build_protocol_methods_payload() -> dict[str, Any]:
 
 
 def build_core_module_methods_payload(*, module_id: str) -> dict[str, Any]:
+    """
+    Build the ``get_module_methods`` success ``payload`` for ``modulr.core``.
+
+    Args:
+        module_id: Canonical module id (expected ``modulr.core`` from the
+            handler).
+
+    Returns:
+        Dict with ``catalog_schema_version``, ``module_id``, ``method_count``,
+        and ``methods`` (full Core catalog, sorted by ``method`` name).
+    """
     rows = sorted(CORE_WIRE_METHOD_CATALOG.values(), key=lambda x: x.method)
     methods = [entry_to_payload_dict(e) for e in rows]
     return {
