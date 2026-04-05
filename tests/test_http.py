@@ -18,6 +18,10 @@ from modulr_core.config.schema import Settings
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http import create_app, resolve_config_path
 from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
+from modulr_core.messages.wire_method_catalog import (
+    build_core_module_methods_payload,
+    build_protocol_methods_payload,
+)
 from modulr_core.persistence import apply_migrations, connect_memory
 from modulr_core.validation import envelope_signing_bytes, payload_hash
 
@@ -342,8 +346,9 @@ def test_post_message_get_module_methods_modulr_core() -> None:
     data = r.json()
     assert data["status"] == "success"
     assert data["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
-    assert data["payload"]["module_id"] == "modulr.core"
-    assert data["payload"]["methods"] == sorted(CORE_OPERATIONS)
+    assert data["payload"] == build_core_module_methods_payload(module_id="modulr.core")
+    names = [m["method"] for m in data["payload"]["methods"]]
+    assert names == sorted(CORE_OPERATIONS)
 
 
 def test_post_message_get_protocol_methods() -> None:
@@ -365,7 +370,9 @@ def test_post_message_get_protocol_methods() -> None:
     data = r.json()
     assert data["status"] == "success"
     assert data["code"] == str(SuccessCode.PROTOCOL_METHODS_RETURNED)
-    assert data["payload"]["methods"] == sorted(PROTOCOL_METHOD_OPERATIONS)
+    assert data["payload"] == build_protocol_methods_payload()
+    names = [m["method"] for m in data["payload"]["methods"]]
+    assert names == sorted(PROTOCOL_METHOD_OPERATIONS)
 
 
 def test_post_message_get_module_route_modulr_core() -> None:

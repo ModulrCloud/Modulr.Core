@@ -15,8 +15,12 @@ from modulr_core.config.schema import Settings
 from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import InvalidHexEncoding, WireValidationError
 from modulr_core.http.envelope import success_response_envelope
-from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
+from modulr_core.messages.wire_method_catalog import (
+    CATALOG_SCHEMA_VERSION,
+    build_core_module_methods_payload,
+    build_protocol_methods_payload,
+)
 from modulr_core.operations.authorize import (
     require_bootstrap_sender,
     require_bootstrap_to_register_module,
@@ -260,7 +264,8 @@ def handle_get_protocol_methods(
 
     The inbound envelope must carry an empty JSON object for ``payload``;
     anything else raises ``WireValidationError`` with ``PAYLOAD_INVALID``. The
-    outbound payload contains ``methods`` (list of strings) and ``method_count``.
+    outbound payload contains ``catalog_schema_version``, ``methods`` (list of
+    catalog objects), and ``method_count``.
 
     Args:
         validated: Inbound message after signature verification and structural
@@ -274,8 +279,7 @@ def handle_get_protocol_methods(
     Returns:
         A success envelope dict suitable for JSON serialization, including
         ``operation_response`` ``get_protocol_methods_response``, success code
-        ``PROTOCOL_METHODS_RETURNED``, and the ``methods`` / ``method_count``
-        payload fields.
+        ``PROTOCOL_METHODS_RETURNED``, and the catalog payload fields.
     """
     del settings, conn
     env = validated.envelope
@@ -285,16 +289,12 @@ def handle_get_protocol_methods(
             "get_protocol_methods expects an empty payload object",
             code=ErrorCode.PAYLOAD_INVALID,
         )
-    methods = sorted(PROTOCOL_METHOD_OPERATIONS)
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="get_protocol_methods_response",
         success_code=SuccessCode.PROTOCOL_METHODS_RETURNED,
-        detail="Protocol method names.",
-        payload={
-            "methods": methods,
-            "method_count": len(methods),
-        },
+        detail="Protocol method catalog.",
+        payload=build_protocol_methods_payload(),
         clock=clock,
     )
 
@@ -306,23 +306,18 @@ def handle_get_module_methods(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    """Return Core wire method names for ``modulr.core``; else empty ``methods``."""
+    """Return Core wire method catalog for ``modulr.core``; else empty ``methods``."""
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
     module_id = _parse_wire_module_name(p, field="module_id")
     if module_id == CANONICAL_CORE_MODULE_NAME:
-        methods = sorted(CORE_OPERATIONS)
         return success_response_envelope(
             request_message_id=env["message_id"],
             operation_response="get_module_methods_response",
             success_code=SuccessCode.MODULE_METHODS_RETURNED,
-            detail="Methods implemented by modulr.core on the wire.",
-            payload={
-                "module_id": module_id,
-                "methods": methods,
-                "method_count": len(methods),
-            },
+            detail="Wire method catalog for modulr.core.",
+            payload=build_core_module_methods_payload(module_id=module_id),
             clock=clock,
         )
     row = ModulesRepository(conn).get_by_name(module_id)
@@ -337,6 +332,7 @@ def handle_get_module_methods(
         success_code=SuccessCode.MODULE_METHODS_RETURNED,
         detail="No method manifest stored for this module.",
         payload={
+            "catalog_schema_version": CATALOG_SCHEMA_VERSION,
             "module_id": module_id,
             "methods": [],
             "method_count": 0,

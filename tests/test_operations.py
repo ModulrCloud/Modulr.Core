@@ -22,6 +22,12 @@ from modulr_core import (
 from modulr_core.config.schema import Settings
 from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
+from modulr_core.messages.wire_method_catalog import (
+    CATALOG_SCHEMA_VERSION,
+    MAX_METHOD_DESCRIPTION_LENGTH,
+    build_core_module_methods_payload,
+    build_protocol_methods_payload,
+)
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, connect_memory
 from modulr_core.repositories.dial_route_entry import DialRouteEntryRepository
@@ -133,8 +139,12 @@ def test_get_protocol_methods_lists_protocol_surface() -> None:
     req = make_validated_inbound(pk, "get_protocol_methods", {}, "gpm-1")
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out["code"] == str(SuccessCode.PROTOCOL_METHODS_RETURNED)
-    assert out["payload"]["methods"] == sorted(PROTOCOL_METHOD_OPERATIONS)
-    assert out["payload"]["method_count"] == len(PROTOCOL_METHOD_OPERATIONS)
+    expected = build_protocol_methods_payload()
+    assert out["payload"] == expected
+    names = [m["method"] for m in out["payload"]["methods"]]
+    assert names == sorted(PROTOCOL_METHOD_OPERATIONS)
+    for m in out["payload"]["methods"]:
+        assert len(m["description"]) <= MAX_METHOD_DESCRIPTION_LENGTH
 
 
 def test_get_protocol_methods_rejects_non_empty_payload() -> None:
@@ -162,9 +172,11 @@ def test_get_module_methods_core_lists_wire_operations() -> None:
     )
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
-    assert out["payload"]["module_id"] == "modulr.core"
-    assert out["payload"]["methods"] == sorted(CORE_OPERATIONS)
-    assert out["payload"]["method_count"] == len(CORE_OPERATIONS)
+    assert out["payload"] == build_core_module_methods_payload(module_id="modulr.core")
+    names = [m["method"] for m in out["payload"]["methods"]]
+    assert names == sorted(CORE_OPERATIONS)
+    for m in out["payload"]["methods"]:
+        assert len(m["description"]) <= MAX_METHOD_DESCRIPTION_LENGTH
 
 
 def test_get_module_methods_core_case_insensitive() -> None:
@@ -222,6 +234,7 @@ def test_get_module_methods_registered_module_empty_manifest() -> None:
     )
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
+    assert out["payload"]["catalog_schema_version"] == CATALOG_SCHEMA_VERSION
     assert out["payload"]["methods"] == []
     assert out["payload"]["method_count"] == 0
 

@@ -440,7 +440,7 @@ export function MethodsMock() {
                   : "No methods in this slice yet — placeholders for upcoming provider/client flows."}
               </p>
             ) : (
-              filteredMethods.map((m) => {
+              pagedMethods.map((m) => {
                 const isSel = selected?.id === m.id;
                 return (
                   <button
