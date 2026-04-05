@@ -14,6 +14,9 @@ from modulr_core.repositories import (
     ModulesRepository,
     NameBindingsRepository,
 )
+from modulr_core.repositories.module_state_snapshot import (
+    ModuleStateSnapshotRepository,
+)
 
 
 @pytest.fixture
@@ -114,6 +117,58 @@ def test_heartbeat_upsert_after_module(conn: sqlite3.Connection) -> None:
     assert row is not None
     assert row["status"] == "degraded"
     assert row["last_seen_at"] == 99
+
+
+def test_module_state_snapshot_fk_requires_module(conn: sqlite3.Connection) -> None:
+    ms = ModuleStateSnapshotRepository(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        ms.upsert(
+            module_name="missing.module",
+            state_phase="running",
+            detail=None,
+            reported_at=1,
+        )
+        conn.commit()
+
+
+def test_module_state_snapshot_upsert_after_module(conn: sqlite3.Connection) -> None:
+    m = ModulesRepository(conn)
+    m.insert(
+        module_name="modulr.z",
+        module_version="2026.3.22.0",
+        route_json="{}",
+        capabilities_json=None,
+        metadata_json=None,
+        signing_public_key=b"\x02" * 32,
+        registered_by_sender_id="a",
+        registered_at=1,
+    )
+    conn.commit()
+    ms = ModuleStateSnapshotRepository(conn)
+    ms.upsert(
+        module_name="modulr.z",
+        state_phase="syncing",
+        detail="epoch 9",
+        reported_at=42,
+    )
+    conn.commit()
+    row = ms.get_by_module_name("modulr.z")
+    assert row is not None
+    assert row["state_phase"] == "syncing"
+    assert row["detail"] == "epoch 9"
+    assert row["reported_at"] == 42
+    ms.upsert(
+        module_name="modulr.z",
+        state_phase="running",
+        detail=None,
+        reported_at=99,
+    )
+    conn.commit()
+    row2 = ms.get_by_module_name("modulr.z")
+    assert row2 is not None
+    assert row2["state_phase"] == "running"
+    assert row2["detail"] is None
+    assert row2["reported_at"] == 99
 
 
 def test_name_bindings_list_by_resolved_id(conn: sqlite3.Connection) -> None:

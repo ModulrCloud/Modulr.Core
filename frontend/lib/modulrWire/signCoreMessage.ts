@@ -1,6 +1,6 @@
 import { getPublicKeyAsync, signAsync, utils } from "@noble/ed25519";
 
-import { bytesToHex } from "./bytes";
+import { bytesToHex, hexToBytes32 } from "./bytes";
 import { canonicalJsonStr } from "./canonicalJson";
 import { payloadHash } from "./payloadHash";
 
@@ -9,6 +9,11 @@ export type SignCoreMessageOpts = {
   operation: string;
   payload: Record<string, unknown>;
   senderId?: string;
+  /**
+   * 64-char hex Ed25519 seed. When set, signs with this key (e.g. report_module_state
+   * must match the module’s registered public key). Otherwise a random dev key.
+   */
+  ed25519SeedHex?: string;
 };
 
 /**
@@ -16,7 +21,8 @@ export type SignCoreMessageOpts = {
  * then canonical JSON of the full object including hex signature.
  */
 export async function buildSignedMessageBody(opts: SignCoreMessageOpts): Promise<string> {
-  const priv = utils.randomPrivateKey();
+  const seed = opts.ed25519SeedHex?.trim();
+  const priv = seed ? hexToBytes32(seed) : utils.randomPrivateKey();
   const pub = await getPublicKeyAsync(priv);
   const pubHex = bytesToHex(pub);
   const messageId = crypto.randomUUID();

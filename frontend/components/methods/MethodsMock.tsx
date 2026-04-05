@@ -34,8 +34,10 @@ const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "lookup_module",
   "get_module_methods",
   "get_module_route",
+  "get_module_state",
   "submit_module_route",
   "remove_module_route",
+  "report_module_state",
 ]);
 
 function liveExecuteHint(methodId: string): string {
@@ -59,6 +61,12 @@ function liveExecuteHint(methodId: string): string {
   }
   if (methodId === "remove_module_route") {
     return "Same signing path. Removes one dial matching module_id + route_type + route. modulr.core: bootstrap when locked; registered modules: module signing key.";
+  }
+  if (methodId === "report_module_state") {
+    return "Signs with the 64-char hex Ed25519 seed from Settings → Methods (dev); it must match module_id’s registered signing_public_key. modulr.core cannot report (not in modules table).";
+  }
+  if (methodId === "get_module_state") {
+    return "Same signing path. Read-only: latest stored snapshot for module_id (nulls if never reported). modulr.core is allowed even without a modules row.";
   }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
@@ -252,6 +260,62 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "get_module_state") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_module_state", {
+          module_id: moduleId,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "report_module_state") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const seed = settings.methodsDevEd25519SeedHex.trim().toLowerCase();
+      if (!/^[0-9a-f]{64}$/.test(seed)) {
+        setError(
+          "report_module_state must be signed with that module’s registered key. Open Settings → Methods (dev) and paste a 64-character hex Ed25519 seed (same secret you registered with for module_id).",
+        );
+        return;
+      }
+      const moduleId = values.module_id?.trim() ?? "";
+      const statePhase = values.state_phase?.trim() ?? "";
+      const detail = values.detail?.trim();
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = {
+          module_id: moduleId,
+          state_phase: statePhase,
+        };
+        if (detail) payload.detail = detail;
+        const data = await executeSignedCoreOperation(base, "report_module_state", payload, {
+          ed25519SeedHex: seed,
+        });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (selected.id === "submit_module_route") {
       const base = primaryCoreBaseUrl(settings.coreEndpoints);
       if (!base) {
@@ -329,7 +393,7 @@ export function MethodsMock() {
     } finally {
       setLoading(false);
     }
-  }, [selected, values, settings.coreEndpoints]);
+  }, [selected, values, settings]);
 
   const safeExecute = useCallback(() => {
     void runExecute().catch((e: unknown) => {
@@ -360,6 +424,8 @@ export function MethodsMock() {
           <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_methods</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_route</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_state</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">report_module_state</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span>, and{" "}
           <span className="font-medium text-[var(--modulr-text)]">remove_module_route</span>{" "}
           call your configured
@@ -454,7 +520,7 @@ export function MethodsMock() {
                     }
                     title={
                       m.coreSurface
-                        ? "M — implemented on modulr.core in MVP (coordination plane), not reimplemented by arbitrary modules."
+                        ? "M — coordination handler on modulr.core in MVP only; not shown for network-wide protocol_surface methods."
                         : undefined
                     }
                     className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${

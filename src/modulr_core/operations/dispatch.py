@@ -13,6 +13,7 @@ from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.handlers import (
     handle_get_module_methods,
     handle_get_module_route,
+    handle_get_module_state,
     handle_get_protocol_methods,
     handle_get_protocol_version,
     handle_heartbeat_update,
@@ -21,6 +22,7 @@ from modulr_core.operations.handlers import (
     handle_register_name,
     handle_register_org,
     handle_remove_module_route,
+    handle_report_module_state,
     handle_resolve_name,
     handle_reverse_resolve_name,
     handle_submit_module_route,
@@ -31,6 +33,7 @@ _HANDLERS = {
     "get_protocol_methods": handle_get_protocol_methods,
     "get_module_methods": handle_get_module_methods,
     "get_module_route": handle_get_module_route,
+    "get_module_state": handle_get_module_state,
     "remove_module_route": handle_remove_module_route,
     "submit_module_route": handle_submit_module_route,
     "register_module": handle_register_module,
@@ -40,6 +43,7 @@ _HANDLERS = {
     "resolve_name": handle_resolve_name,
     "reverse_resolve_name": handle_reverse_resolve_name,
     "heartbeat_update": handle_heartbeat_update,
+    "report_module_state": handle_report_module_state,
 }
 
 

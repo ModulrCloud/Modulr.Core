@@ -1452,6 +1452,141 @@ def test_heartbeat_identity_mismatch() -> None:
     assert ei.value.code is ErrorCode.IDENTITY_MISMATCH
 
 
+def test_get_module_state_modulr_core_empty() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_state",
+        {"module_id": "modulr.core"},
+        "gms-core",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.MODULE_STATE_SNAPSHOT_RETURNED)
+    assert out["payload"]["module_id"] == "modulr.core"
+    assert out["payload"]["state_phase"] is None
+    assert out["payload"]["detail"] is None
+    assert out["payload"]["reported_at"] is None
+
+
+def test_get_module_state_unknown_module() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_state",
+        {"module_id": "modulr.unknown"},
+        "gms-x",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
+
+
+def test_report_module_state_requires_registration() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {"module_id": "modulr.storage", "state_phase": "running"},
+        "rms-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
+
+
+def test_report_module_state_invalid_phase() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-reg",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    bad = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {"module_id": "modulr.storage", "state_phase": "exploding"},
+        "rms-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(bad, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.INVALID_STATUS
+
+
+def test_report_module_state_then_get() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-r1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    rep = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "degraded",
+            "detail": "disk slow",
+        },
+        "rms-r2",
+    )
+    out_rep = dispatch_operation(
+        rep,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 77.0,
+    )
+    assert out_rep["code"] == str(SuccessCode.MODULE_STATE_REPORTED)
+    assert out_rep["payload"]["state_phase"] == "degraded"
+    assert out_rep["payload"]["detail"] == "disk slow"
+    assert out_rep["payload"]["reported_at"] == 77
+
+    any_pk = Ed25519PrivateKey.generate()
+    get = make_validated_inbound(
+        any_pk,
+        "get_module_state",
+        {"module_id": "modulr.storage"},
+        "rms-g1",
+    )
+    out_get = dispatch_operation(
+        get,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 88.0,
+    )
+    assert out_get["code"] == str(SuccessCode.MODULE_STATE_SNAPSHOT_RETURNED)
+    assert out_get["payload"]["module_id"] == "modulr.storage"
+    assert out_get["payload"]["state_phase"] == "degraded"
+    assert out_get["payload"]["detail"] == "disk slow"
+    assert out_get["payload"]["reported_at"] == 77
+
+
 def test_register_name_resolve_and_reverse() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

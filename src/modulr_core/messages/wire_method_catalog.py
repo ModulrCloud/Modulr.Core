@@ -84,7 +84,9 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         group="discovery",
         summary="List wire methods advertised for a module (Core or registered).",
         description=(
-            "For modulr.core returns the full coordination catalog with metadata. "
+            "For modulr.core returns Core's full static catalog: coordination "
+            "methods plus protocol_surface entries shared across the network—use "
+            "protocol_surface on each row; not every listed method is Core-only. "
             "For other modules returns manifest-backed methods when stored, else "
             "empty. Requires module_id in the payload."
         ),
@@ -198,10 +200,39 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         summary="Lightweight liveness and optional note for a connected module.",
         description=(
             "Keeps availability signals cheap compared to full state sync. Carries "
-            "module_id and optional note; validators and UIs may aggregate these "
+            "module_name and optional note; validators and UIs may aggregate these "
             "signals for health views."
         ),
         payload_contract="heartbeat_update",
+        protocol_surface=True,
+    ),
+    _e(
+        "report_module_state",
+        category="validator",
+        group="telemetry",
+        summary="Submit a lifecycle snapshot for a registered module.",
+        description=(
+            "Modules report state_phase (e.g. running, syncing, degraded) and "
+            "optional detail so validators and dashboards can aggregate health and "
+            "activity. Sender must match the module signing key. Shared protocol "
+            "surface: every participating module is expected to report; richer "
+            "metrics can extend this contract later."
+        ),
+        payload_contract="report_module_state",
+        protocol_surface=True,
+    ),
+    _e(
+        "get_module_state",
+        category="validator",
+        group="telemetry",
+        summary="Read the latest state snapshot Core stored for a module.",
+        description=(
+            "Returns fields from the most recent report_module_state for "
+            "module_id, or nulls when nothing was reported yet. Validators serve "
+            "this read path; ids without a stored row return nulls. Used by "
+            "explorers and dashboards without dialing the module."
+        ),
+        payload_contract="module_id",
         protocol_surface=True,
     ),
 )

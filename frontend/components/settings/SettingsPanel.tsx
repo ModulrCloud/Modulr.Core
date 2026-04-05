@@ -182,6 +182,46 @@ export function SettingsPanel() {
 
           <section>
             <h3 className="font-modulr-display mb-3 text-sm font-bold text-[var(--modulr-accent)]">
+              Methods (dev)
+            </h3>
+            <p className="mb-3 text-xs text-[var(--modulr-text-muted)] leading-relaxed">
+              <span className="font-medium text-[var(--modulr-text)]">report_module_state</span>{" "}
+              requires the sender key to match the module’s{" "}
+              <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">signing_public_key</code>{" "}
+              row. Paste the same 64-character hex Ed25519 <strong>seed</strong> you used when
+              registering that <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">module_id</code>
+              . Stored in this browser only; never ship production secrets here.
+            </p>
+            <label className={labelCls()} htmlFor="methods-dev-seed">
+              Module Ed25519 seed (hex)
+            </label>
+            <input
+              id="methods-dev-seed"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              className={inputCls()}
+              placeholder="64 lowercase hex characters"
+              value={settings.methodsDevEd25519SeedHex}
+              onChange={(e) => {
+                const v = e.target.value
+                  .trim()
+                  .toLowerCase()
+                  .replace(/^0x/, "")
+                  .replace(/[^0-9a-f]/g, "")
+                  .slice(0, 64);
+                update("methodsDevEd25519SeedHex", v);
+              }}
+              aria-describedby="methods-dev-seed-hint"
+            />
+            <p id="methods-dev-seed-hint" className="mt-2 text-xs text-[var(--modulr-text-muted)]">
+              Leave empty to skip live <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">report_module_state</code>{" "}
+              (Methods will show an error until set). Other live Methods still use a random dev key.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-modulr-display mb-3 text-sm font-bold text-[var(--modulr-accent)]">
               Theme
             </h3>
             <p className="mb-3 text-xs text-[var(--modulr-text-muted)]">

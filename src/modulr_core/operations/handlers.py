@@ -35,12 +35,16 @@ from modulr_core.operations.payload_util import (
     optional_ed25519_public_key_hex,
     optional_int,
     optional_json_value,
+    optional_str,
     require_dict,
     require_str,
 )
 from modulr_core.repositories.core_advertised_route import CoreAdvertisedRouteRepository
 from modulr_core.repositories.dial_route_entry import DialRouteEntryRepository
 from modulr_core.repositories.heartbeat import HeartbeatRepository
+from modulr_core.repositories.module_state_snapshot import (
+    ModuleStateSnapshotRepository,
+)
 from modulr_core.repositories.modules import ModulesRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
 from modulr_core.validation import canonical_json_str, decode_hex_fixed
@@ -55,6 +59,10 @@ _MODULE_NAME_RE = re.compile(
     r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
 )
 _MAX_METRICS_CANONICAL_BYTES = 65_536
+_MODULE_STATE_PHASES: frozenset[str] = frozenset(
+    ("running", "syncing", "degraded", "maintenance"),
+)
+_MAX_MODULE_STATE_DETAIL_CHARS = 2048
 
 
 def _parse_submit_route_mode(p: dict[str, Any]) -> str:
@@ -309,9 +317,11 @@ def handle_get_module_methods(
     Handle ``get_module_methods``: return a wire method catalog or an empty list.
 
     For ``modulr.core``, returns the full static Core catalog (same entry shape
-    as ``get_protocol_methods``, plus every coordination method). For a
-    registered module without a stored manifest, returns ``methods`` as ``[]``
-    with ``catalog_schema_version`` and ``module_id``.
+    as ``get_protocol_methods``, plus coordination methods). Rows include
+    ``protocol_surface`` where the method is shared network-wide—not every entry
+    is Core-only coordination. For a registered module without a stored manifest,
+    returns ``methods`` as ``[]`` with ``catalog_schema_version`` and
+    ``module_id``.
 
     Args:
         validated: Inbound message after signature verification and structural
@@ -342,7 +352,10 @@ def handle_get_module_methods(
             request_message_id=env["message_id"],
             operation_response="get_module_methods_response",
             success_code=SuccessCode.MODULE_METHODS_RETURNED,
-            detail="Wire method catalog for modulr.core.",
+            detail=(
+                "Full wire catalog for modulr.core "
+                "(coordination + protocol surface)."
+            ),
             payload=build_core_module_methods_payload(module_id=module_id),
             clock=clock,
         )
@@ -1214,6 +1227,158 @@ def handle_heartbeat_update(
         operation_response="heartbeat_update_response",
         success_code=SuccessCode.HEARTBEAT_RECORDED,
         detail="Heartbeat recorded.",
+        payload=out_payload,
+        clock=clock,
+    )
+
+
+def handle_report_module_state(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """
+    Store the latest lifecycle snapshot for a registered module.
+
+    Requires ``module_id``, ``state_phase`` (running, syncing, degraded,
+    maintenance), and optional ``detail``. The sender Ed25519 key must match the
+    module's registered ``signing_public_key``. Intended as shared protocol
+    surface so dashboards can aggregate activity without dialing each module.
+
+    Args:
+        validated: Verified inbound envelope and signing preimage.
+        settings: Runtime settings (unused; reserved for policy hooks).
+        conn: Open SQLite connection.
+        clock: Monotonic/epoch clock for ``reported_at``.
+
+    Returns:
+        Success response envelope with ``module_id``, ``state_phase``, ``detail``,
+        and ``reported_at``.
+
+    Raises:
+        WireValidationError: Unknown module, identity mismatch, invalid phase, or
+            detail too long.
+    """
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    phase_raw = require_str(p, "state_phase").lower()
+    if phase_raw not in _MODULE_STATE_PHASES:
+        raise WireValidationError(
+            f"payload.state_phase must be one of {sorted(_MODULE_STATE_PHASES)}",
+            code=ErrorCode.INVALID_STATUS,
+        )
+    detail_raw = optional_str(p, "detail")
+    detail: str | None
+    if detail_raw is None:
+        detail = None
+    else:
+        detail = detail_raw.strip() or None
+        if detail is not None and len(detail) > _MAX_MODULE_STATE_DETAIL_CHARS:
+            raise WireValidationError(
+                f"payload.detail must be at most {_MAX_MODULE_STATE_DETAIL_CHARS} "
+                "characters",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+
+    modules = ModulesRepository(conn)
+    mod_row = modules.get_by_name(module_id)
+    if mod_row is None:
+        raise WireValidationError(
+            f"module {module_id!r} is not registered",
+            code=ErrorCode.MODULE_NOT_FOUND,
+        )
+    reg_key = mod_row["signing_public_key"]
+    if isinstance(reg_key, memoryview):
+        reg_key = reg_key.tobytes()
+    if not secrets.compare_digest(validated.sender_public_key, reg_key):
+        raise WireValidationError(
+            "sender key does not match registered module signing_public_key",
+            code=ErrorCode.IDENTITY_MISMATCH,
+        )
+
+    canonical_name = str(mod_row["module_name"])
+    reported_at = int(clock())
+    ModuleStateSnapshotRepository(conn).upsert(
+        module_name=canonical_name,
+        state_phase=phase_raw,
+        detail=detail,
+        reported_at=reported_at,
+    )
+    out_payload: dict[str, Any] = {
+        "module_id": canonical_name,
+        "state_phase": phase_raw,
+        "detail": detail,
+        "reported_at": reported_at,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="report_module_state_response",
+        success_code=SuccessCode.MODULE_STATE_REPORTED,
+        detail="Module state recorded.",
+        payload=out_payload,
+        clock=clock,
+    )
+
+
+def handle_get_module_state(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """
+    Return the latest stored ``report_module_state`` snapshot for ``module_id``.
+
+    For ``modulr.core`` succeeds even though the coordination module has no
+    ``modules`` row; payload fields are JSON null when no snapshot exists.
+    Other ``module_id`` values require a registered module.
+
+    Args:
+        validated: Verified inbound envelope and signing preimage.
+        settings: Runtime settings (unused).
+        conn: Open SQLite connection.
+        clock: Response timestamp source.
+
+    Returns:
+        Success envelope with ``module_id``, ``state_phase``, ``detail``, and
+        ``reported_at`` (each null when never reported).
+
+    Raises:
+        WireValidationError: ``module_id`` missing/invalid or unknown module
+            (except built-in ``modulr.core``).
+    """
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    module_id = _parse_wire_module_name(p, field="module_id")
+    if module_id == CANONICAL_CORE_MODULE_NAME:
+        canonical = CANONICAL_CORE_MODULE_NAME
+    else:
+        row = ModulesRepository(conn).get_by_name(module_id)
+        if row is None:
+            raise WireValidationError(
+                f"module {module_id!r} not found",
+                code=ErrorCode.MODULE_NOT_FOUND,
+            )
+        canonical = str(row["module_name"])
+
+    snap = ModuleStateSnapshotRepository(conn).get_by_module_name(canonical)
+    out_payload: dict[str, Any] = {
+        "module_id": canonical,
+        "state_phase": snap["state_phase"] if snap else None,
+        "detail": snap["detail"] if snap else None,
+        "reported_at": snap["reported_at"] if snap else None,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_module_state_response",
+        success_code=SuccessCode.MODULE_STATE_SNAPSHOT_RETURNED,
+        detail="Module state returned.",
         payload=out_payload,
         clock=clock,
     )
