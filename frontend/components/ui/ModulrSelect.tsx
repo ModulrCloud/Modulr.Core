@@ -16,6 +16,11 @@ type Props = {
   onChange: (value: string) => void;
   options: ModulrSelectOption[];
   className?: string;
+  /**
+   * When the listbox is closed, Enter invokes this instead of opening the menu
+   * (e.g. last parameter field → run execute).
+   */
+  onEnterWhenClosed?: () => void;
 };
 
 /**
@@ -27,6 +32,7 @@ export function ModulrSelect({
   onChange,
   options,
   className = "",
+  onEnterWhenClosed,
 }: Props) {
   const uid = useId();
   const triggerId = id ?? `modulr-select-${uid}`;
@@ -71,6 +77,11 @@ export function ModulrSelect({
       return;
     }
     if (!open) {
+      if (e.key === "Enter" && onEnterWhenClosed) {
+        e.preventDefault();
+        onEnterWhenClosed();
+        return;
+      }
       if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
         e.preventDefault();
         setOpen(true);
