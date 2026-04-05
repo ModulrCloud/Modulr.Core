@@ -249,7 +249,7 @@ def handle_get_protocol_methods(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
-    """Return protocol-surface method names (versioning, liveness, discovery of protocol)."""
+    """Return protocol-surface method names (version, liveness, protocol discovery)."""
     del settings, conn
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
