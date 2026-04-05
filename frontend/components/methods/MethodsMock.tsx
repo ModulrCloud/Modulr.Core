@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
@@ -551,6 +551,34 @@ function MethodPanel({
   liveSigned: boolean;
   liveHint: string;
 }) {
+  const lastFieldSubmit = useCallback(
+    (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, multiline: boolean) => {
+      if (e.nativeEvent.isComposing) return;
+      if (multiline) {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          if (!loading) onExecute();
+        }
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (!loading) onExecute();
+      }
+    },
+    [loading, onExecute],
+  );
+
+  const lastParam = method.params[method.params.length - 1];
+  const lastFieldEnterTip =
+    method.params.length === 0
+      ? null
+      : lastParam?.options?.length
+        ? "Last field: Enter runs Execute when the dropdown is closed."
+        : lastParam?.multiline
+          ? "Last field: Ctrl+Enter (⌘+Enter on Mac) runs Execute."
+          : "Last field: Enter runs Execute.";
+
   return (
     <GlassPanel className="p-6 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -579,47 +607,58 @@ function MethodPanel({
           <p className="modulr-text-muted mt-3 text-sm">No parameters for this method.</p>
         ) : (
           <div className="mt-4 space-y-4">
-            {method.params.map((p) => (
-              <div key={p.name}>
-                <label className="text-xs font-medium text-[var(--modulr-text-muted)]" htmlFor={`m-${method.id}-${p.name}`}>
-                  {p.label}
-                  {p.required === false ? (
-                    <span className="font-normal text-[var(--modulr-text-muted)]"> (optional)</span>
-                  ) : null}
-                </label>
-                {p.options?.length ? (
-                  <ModulrSelect
-                    id={`m-${method.id}-${p.name}`}
-                    value={values[p.name] ?? p.options[0]!.value}
-                    onChange={(v) => onChange(p.name, v)}
-                    options={p.options}
-                  >
-                  </ModulrSelect>
-                ) : p.multiline ? (
-                  <textarea
-                    id={`m-${method.id}-${p.name}`}
-                    value={values[p.name] ?? ""}
-                    onChange={(e) => onChange(p.name, e.target.value)}
-                    placeholder={p.placeholder}
-                    rows={4}
-                    className={`${fieldClass} resize-y font-mono text-xs leading-relaxed`}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                ) : (
-                  <input
-                    id={`m-${method.id}-${p.name}`}
-                    type="text"
-                    value={values[p.name] ?? ""}
-                    onChange={(e) => onChange(p.name, e.target.value)}
-                    placeholder={p.placeholder}
-                    className={fieldClass}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                )}
-              </div>
-            ))}
+            {method.params.map((p, idx) => {
+              const isLastField = idx === method.params.length - 1;
+              return (
+                <div key={p.name}>
+                  <label className="text-xs font-medium text-[var(--modulr-text-muted)]" htmlFor={`m-${method.id}-${p.name}`}>
+                    {p.label}
+                    {p.required === false ? (
+                      <span className="font-normal text-[var(--modulr-text-muted)]"> (optional)</span>
+                    ) : null}
+                  </label>
+                  {p.options?.length ? (
+                    <ModulrSelect
+                      id={`m-${method.id}-${p.name}`}
+                      value={values[p.name] ?? p.options[0]!.value}
+                      onChange={(v) => onChange(p.name, v)}
+                      options={p.options}
+                      onEnterWhenClosed={
+                        isLastField
+                          ? () => {
+                              if (!loading) onExecute();
+                            }
+                          : undefined
+                      }
+                    />
+                  ) : p.multiline ? (
+                    <textarea
+                      id={`m-${method.id}-${p.name}`}
+                      value={values[p.name] ?? ""}
+                      onChange={(e) => onChange(p.name, e.target.value)}
+                      onKeyDown={isLastField ? (e) => lastFieldSubmit(e, true) : undefined}
+                      placeholder={p.placeholder}
+                      rows={4}
+                      className={`${fieldClass} resize-y font-mono text-xs leading-relaxed`}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <input
+                      id={`m-${method.id}-${p.name}`}
+                      type="text"
+                      value={values[p.name] ?? ""}
+                      onChange={(e) => onChange(p.name, e.target.value)}
+                      onKeyDown={isLastField ? (e) => lastFieldSubmit(e, false) : undefined}
+                      placeholder={p.placeholder}
+                      className={fieldClass}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -636,6 +675,9 @@ function MethodPanel({
             {liveSigned ? liveHint : "Simulates round-trip delay; response is deterministic from your inputs."}
           </span>
         </div>
+        {lastFieldEnterTip ? (
+          <p className="mt-2 text-xs text-[var(--modulr-text-muted)]">{lastFieldEnterTip}</p>
+        ) : null}
       </div>
 
       {error ? (

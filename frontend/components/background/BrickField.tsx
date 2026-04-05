@@ -205,6 +205,9 @@ export function BrickField({
     const paddle = { x: 0, y: 0, w: PADDLE_THICK, h: PADDLE_LEN_MIN };
     let bricks: Brick[] = [];
     let brickPalette: BrickPalette = { h: 45, s: 0.72, lMid: 0.38 };
+    /** Logical size the current brick/ball/paddle layout was built or scaled for. */
+    let gameW = 0;
+    let gameH = 0;
     let aimJitter = 0;
     let aimJitterTarget = 0;
     let jitterAccum = 0;
@@ -237,6 +240,30 @@ export function BrickField({
       brickPalette = pickBrickPalette();
       bricks = buildBricks(w, h);
       resetBall(w, h);
+      gameW = w;
+      gameH = h;
+    }
+
+    /** Keep palette and brick alive state; map positions/sizes to the new viewport. */
+    function scaleGameStateTo(newW: number, newH: number) {
+      if (gameW <= 0 || gameH <= 0) return;
+      const sx = newW / gameW;
+      const sy = newH / gameH;
+      ball.x = clamp(ball.x * sx, ball.r, newW - ball.r);
+      ball.y = clamp(ball.y * sy, ball.r, newH - ball.r);
+      paddle.x *= sx;
+      paddle.y *= sy;
+      paddle.h = paddleLenFor(newH);
+      paddle.y = clamp(paddle.y, paddle.h / 2 + 8, newH - paddle.h / 2 - 8);
+      paddle.x = clamp(paddle.x, paddle.w / 2 + 4, newW - paddle.w / 2 - 4);
+      for (const b of bricks) {
+        b.x *= sx;
+        b.y *= sy;
+        b.w = Math.max(2, b.w * sx);
+        b.h = Math.max(2, b.h * sy);
+      }
+      gameW = newW;
+      gameH = newH;
     }
 
     function resize() {
@@ -250,15 +277,28 @@ export function BrickField({
       el.style.height = `${h}px`;
       const c = el.getContext("2d", { alpha: true });
       if (c) c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      newLevel(w, h);
+
+      if (gameW === 0 || gameH === 0) {
+        newLevel(w, h);
+        return;
+      }
+      if (w === gameW && h === gameH) {
+        return;
+      }
+      scaleGameStateTo(w, h);
     }
 
     resize();
     let lastT = performance.now();
 
+    let resizeRafId = 0;
     const onResize = () => {
-      resize();
-      lastT = performance.now();
+      if (resizeRafId) cancelAnimationFrame(resizeRafId);
+      resizeRafId = requestAnimationFrame(() => {
+        resizeRafId = 0;
+        resize();
+        lastT = performance.now();
+      });
     };
     window.addEventListener("resize", onResize);
 
@@ -433,6 +473,7 @@ export function BrickField({
     raf.current = requestAnimationFrame(frame);
 
     return () => {
+      if (resizeRafId) cancelAnimationFrame(resizeRafId);
       window.removeEventListener("resize", onResize);
       cancelAnimationFrame(raf.current);
       celebrationUntil = 0;
