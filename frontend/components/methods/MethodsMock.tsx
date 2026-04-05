@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { GlassPanel } from "@/components/shell/GlassPanel";
@@ -12,6 +12,8 @@ import { formatClientError } from "@/lib/formatClientError";
 import {
   buildMockMethodResponse,
   METHOD_CATALOG,
+  METHOD_CATEGORY_TABS,
+  type MethodCategory,
   type MethodDef,
 } from "./mockMethodCatalog";
 import { PrettyMockResponse } from "./PrettyMockResponse";
@@ -25,8 +27,9 @@ function delay(ms: number): Promise<void> {
 
 const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_protocol_version",
+  "get_protocol_methods",
   "lookup_module",
-  "get_module_functions",
+  "get_module_methods",
   "get_module_route",
   "submit_module_route",
   "remove_module_route",
@@ -39,8 +42,11 @@ function liveExecuteHint(methodId: string): string {
   if (methodId === "lookup_module") {
     return "Same signing path. The module must already be registered or Core returns MODULE_NOT_FOUND.";
   }
-  if (methodId === "get_module_functions") {
+  if (methodId === "get_module_methods") {
     return "Same signing path. For modulr.core returns Core wire operations; other modules return an empty list until manifests exist.";
+  }
+  if (methodId === "get_protocol_methods") {
+    return "Same signing path. Empty payload. Returns protocol-level operations (version surface, this op, heartbeat).";
   }
   if (methodId === "get_module_route") {
     return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
@@ -48,21 +54,40 @@ function liveExecuteHint(methodId: string): string {
   if (methodId === "submit_module_route") {
     return "Same signing path. This form defaults mode to merge (stack dials). If you omit mode on the wire entirely, Core uses replace_all. modulr.core merge (and remove) need a bootstrap key when dev_mode is off and bootstrap keys are set. Optional priority and endpoint_signing_public_key_hex.";
   }
+  if (methodId === "remove_module_route") {
+    return "Same signing path. Removes one dial matching module_id + route_type + route. modulr.core: bootstrap when locked; registered modules: module signing key.";
+  }
   return "Uses GET /version for the wire protocol_version, then a fresh Ed25519 key (dev-friendly).";
 }
 
 export function MethodsMock() {
   const { settings } = useAppUi();
+  const [categoryTab, setCategoryTab] = useState<MethodCategory>("protocol");
   const [selectedId, setSelectedId] = useState(METHOD_CATALOG[0]!.id);
   const [values, setValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
-  const selected = useMemo(
-    () => METHOD_CATALOG.find((m) => m.id === selectedId) ?? METHOD_CATALOG[0]!,
-    [selectedId],
+  const filteredMethods = useMemo(
+    () => METHOD_CATALOG.filter((m) => m.category === categoryTab),
+    [categoryTab],
   );
+
+  const selected = useMemo((): MethodDef | null => {
+    const cur = METHOD_CATALOG.find((m) => m.id === selectedId);
+    if (cur && cur.category === categoryTab) return cur;
+    return filteredMethods[0] ?? null;
+  }, [selectedId, categoryTab, filteredMethods]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const next: Record<string, string> = {};
+    selected.params.forEach((p) => {
+      if (p.options?.length) next[p.name] = p.options[0]!.value;
+    });
+    setValues(next);
+  }, [selected]);
 
   const setParam = useCallback((name: string, v: string) => {
     setValues((prev) => ({ ...prev, [name]: v }));
@@ -83,6 +108,7 @@ export function MethodsMock() {
   const runExecute = useCallback(async () => {
     setError(null);
     setResult(null);
+    if (!selected) return;
     const missing = selected.params.filter((p) => p.required !== false && !values[p.name]?.trim());
     if (missing.length > 0) {
       setError(`Fill in: ${missing.map((m) => m.label).join(", ")}`);
@@ -128,7 +154,7 @@ export function MethodsMock() {
       return;
     }
 
-    if (selected.id === "get_module_functions") {
+    if (selected.id === "get_module_methods") {
       const base = primaryCoreBaseUrl(settings.coreEndpoints);
       if (!base) {
         setError("Set a Core base URL in settings.");
@@ -137,9 +163,27 @@ export function MethodsMock() {
       const moduleId = values.module_id?.trim() ?? "";
       setLoading(true);
       try {
-        const data = await executeSignedCoreOperation(base, "get_module_functions", {
+        const data = await executeSignedCoreOperation(base, "get_module_methods", {
           module_id: moduleId,
         });
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "get_protocol_methods") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_protocol_methods", {});
         setResult(data);
       } catch (e: unknown) {
         setError(formatClientError(e));
@@ -266,17 +310,18 @@ export function MethodsMock() {
           Methods
         </h1>
         <p className="modulr-text-muted mt-4 max-w-3xl leading-relaxed">
-          Operations exposed by <span className="font-medium text-[var(--modulr-text)]">Modulr.Core</span>{" "}
-          — routing (protocol-agnostic <span className="font-medium text-[var(--modulr-text)]">route type</span>{" "}
-          + <span className="font-medium text-[var(--modulr-text)]">route</span>), module state
-          reports, discovery manifests (<span className="font-medium text-[var(--modulr-text)]">code storage</span>
-          ), names, orgs, and heartbeats. Contract-style fields, one mock execute, readable results
-          (no signed envelope from this UI).
+          Operations grouped by <span className="font-medium text-[var(--modulr-text)]">protocol</span> (version + heartbeat),{" "}
+          <span className="font-medium text-[var(--modulr-text)]">validator</span> (coordination / Core),{" "}
+          <span className="font-medium text-[var(--modulr-text)]">provider</span>, and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">client</span> slices — preview of how discovery
+          JSON will be partitioned (tabs are static for now; wire catalog comes next).
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
           <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_protocol_methods</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
-          <span className="font-medium text-[var(--modulr-text)]">get_module_functions</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_methods</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_module_route</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">submit_module_route</span>, and{" "}
           <span className="font-medium text-[var(--modulr-text)]">remove_module_route</span>{" "}
           call your configured
@@ -287,40 +332,108 @@ export function MethodsMock() {
       </GlassPanel>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <GlassPanel className="p-4 sm:p-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:w-72 lg:shrink-0 lg:overflow-y-auto">
+        <GlassPanel className="p-4 sm:p-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)] lg:w-80 lg:shrink-0 lg:overflow-y-auto">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+            Category
+          </p>
+          <div
+            className="mt-2 flex flex-wrap gap-1.5"
+            role="tablist"
+            aria-label="Operation category"
+          >
+            {METHOD_CATEGORY_TABS.map((tab) => {
+              const count = METHOD_CATALOG.filter((m) => m.category === tab.id).length;
+              const isActive = categoryTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  title={tab.description}
+                  onClick={() => setCategoryTab(tab.id)}
+                  className={`rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
+                    isActive
+                      ? "bg-[var(--modulr-accent)]/15 text-[var(--modulr-accent)] ring-1 ring-[var(--modulr-accent)]/35"
+                      : "text-[var(--modulr-text-muted)] hover:bg-[var(--modulr-glass-fill)] hover:text-[var(--modulr-text)]"
+                  }`}
+                >
+                  <span className="block leading-tight">{tab.label}</span>
+                  <span className="block text-[10px] font-normal opacity-80">{count} op{count === 1 ? "" : "s"}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="modulr-text-muted mt-3 text-[11px] leading-snug">{METHOD_CATEGORY_TABS.find((t) => t.id === categoryTab)?.description}</p>
+
+          <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
             Operations
           </p>
-          <nav className="mt-3 flex flex-col gap-1" aria-label="Core methods">
-            {METHOD_CATALOG.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => onSelectMethod(m.id)}
-                className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
-                  m.id === selectedId
-                    ? "bg-[var(--modulr-accent)]/15 text-[var(--modulr-accent)] ring-1 ring-[var(--modulr-accent)]/35"
-                    : "text-[var(--modulr-text)] hover:bg-[var(--modulr-glass-fill)]"
-                }`}
-              >
-                <span className="font-mono text-xs">{m.title}</span>
-              </button>
-            ))}
+          <nav className="mt-2 flex flex-col gap-1" aria-label="Methods in this category">
+            {filteredMethods.length === 0 ? (
+              <p className="modulr-text-muted rounded-lg border border-dashed border-[var(--modulr-glass-border)] px-3 py-4 text-xs leading-relaxed">
+                No operations in this slice yet — placeholders for upcoming provider/client flows.
+              </p>
+            ) : (
+              filteredMethods.map((m) => {
+                const isSel = selected?.id === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onSelectMethod(m.id)}
+                    aria-label={
+                      m.coreSurface
+                        ? `${m.title}, modulr.core coordination method`
+                        : m.title
+                    }
+                    title={
+                      m.coreSurface
+                        ? "M — implemented on modulr.core in MVP (coordination plane), not reimplemented by arbitrary modules."
+                        : undefined
+                    }
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                      isSel
+                        ? "bg-[var(--modulr-accent)]/15 text-[var(--modulr-accent)] ring-1 ring-[var(--modulr-accent)]/35"
+                        : "text-[var(--modulr-text)] hover:bg-[var(--modulr-glass-fill)]"
+                    }`}
+                  >
+                    <span className="min-w-0 truncate font-mono text-xs">{m.title}</span>
+                    {m.coreSurface ? (
+                      <span
+                        className="shrink-0 text-xs font-semibold tabular-nums text-[var(--modulr-accent)]"
+                        aria-hidden
+                      >
+                        M
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
           </nav>
         </GlassPanel>
 
         <div className="min-w-0 flex-1 space-y-6">
-          <MethodPanel
-            method={selected}
-            values={values}
-            onChange={setParam}
-            onExecute={safeExecute}
-            loading={loading}
-            error={error}
-            result={result}
-            liveSigned={LIVE_SIGNED_METHOD_IDS.has(selected.id)}
-            liveHint={liveExecuteHint(selected.id)}
-          />
+          {selected ? (
+            <MethodPanel
+              method={selected}
+              values={values}
+              onChange={setParam}
+              onExecute={safeExecute}
+              loading={loading}
+              error={error}
+              result={result}
+              liveSigned={LIVE_SIGNED_METHOD_IDS.has(selected.id)}
+              liveHint={liveExecuteHint(selected.id)}
+            />
+          ) : (
+            <GlassPanel className="p-8">
+              <p className="modulr-text-muted text-sm leading-relaxed">
+                Select a category that lists operations, or choose another tab.
+              </p>
+            </GlassPanel>
+          )}
         </div>
       </div>
     </div>

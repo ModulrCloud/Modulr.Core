@@ -8,7 +8,8 @@ TARGET_MODULE_CORE = "modulr.core"
 
 CORE_OPERATIONS = frozenset({
     "get_protocol_version",
-    "get_module_functions",
+    "get_protocol_methods",
+    "get_module_methods",
     "submit_module_route",
     "remove_module_route",
     "get_module_route",
@@ -18,6 +19,12 @@ CORE_OPERATIONS = frozenset({
     "register_org",
     "resolve_name",
     "reverse_resolve_name",
+    "heartbeat_update",
+})
+
+PROTOCOL_METHOD_OPERATIONS = frozenset({
+    "get_protocol_version",
+    "get_protocol_methods",
     "heartbeat_update",
 })
 

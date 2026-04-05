@@ -11,8 +11,9 @@ from modulr_core.errors.codes import ErrorCode
 from modulr_core.errors.exceptions import WireValidationError
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.handlers import (
-    handle_get_module_functions,
+    handle_get_module_methods,
     handle_get_module_route,
+    handle_get_protocol_methods,
     handle_get_protocol_version,
     handle_heartbeat_update,
     handle_lookup_module,
@@ -27,7 +28,8 @@ from modulr_core.operations.handlers import (
 
 _HANDLERS = {
     "get_protocol_version": handle_get_protocol_version,
-    "get_module_functions": handle_get_module_functions,
+    "get_protocol_methods": handle_get_protocol_methods,
+    "get_module_methods": handle_get_module_methods,
     "get_module_route": handle_get_module_route,
     "remove_module_route": handle_remove_module_route,
     "submit_module_route": handle_submit_module_route,

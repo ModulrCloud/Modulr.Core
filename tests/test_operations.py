@@ -20,7 +20,7 @@ from modulr_core import (
     WireValidationError,
 )
 from modulr_core.config.schema import Settings
-from modulr_core.messages.constants import CORE_OPERATIONS
+from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, connect_memory
@@ -127,51 +127,75 @@ def test_register_modulr_core_reserved() -> None:
         assert ei.value.code is ErrorCode.MODULE_NAME_RESERVED
 
 
-def test_get_module_functions_core_lists_wire_operations() -> None:
+def test_get_protocol_methods_lists_protocol_surface() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(pk, "get_protocol_methods", {}, "gpm-1")
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.PROTOCOL_METHODS_RETURNED)
+    assert out["payload"]["methods"] == sorted(PROTOCOL_METHOD_OPERATIONS)
+    assert out["payload"]["method_count"] == len(PROTOCOL_METHOD_OPERATIONS)
+
+
+def test_get_protocol_methods_rejects_non_empty_payload() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
     req = make_validated_inbound(
         pk,
-        "get_module_functions",
+        "get_protocol_methods",
+        {"extra": 1},
+        "gpm-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_get_module_methods_core_lists_wire_operations() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_module_methods",
         {"module_id": "modulr.core"},
-        "gmf-1",
+        "gmm-1",
     )
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
-    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert out["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
     assert out["payload"]["module_id"] == "modulr.core"
-    assert out["payload"]["operations"] == sorted(CORE_OPERATIONS)
-    assert out["payload"]["operation_count"] == len(CORE_OPERATIONS)
+    assert out["payload"]["methods"] == sorted(CORE_OPERATIONS)
+    assert out["payload"]["method_count"] == len(CORE_OPERATIONS)
 
 
-def test_get_module_functions_core_case_insensitive() -> None:
+def test_get_module_methods_core_case_insensitive() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
     req = make_validated_inbound(
         pk,
-        "get_module_functions",
+        "get_module_methods",
         {"module_id": "Modulr.Core"},
-        "gmf-2",
+        "gmm-2",
     )
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
-    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
+    assert out["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
     assert out["payload"]["module_id"] == "modulr.core"
 
 
-def test_get_module_functions_unknown_module() -> None:
+def test_get_module_methods_unknown_module() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
     req = make_validated_inbound(
         pk,
-        "get_module_functions",
+        "get_module_methods",
         {"module_id": "modulr.unknown"},
-        "gmf-3",
+        "gmm-3",
     )
     with pytest.raises(WireValidationError) as ei:
         dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
 
 
-def test_get_module_functions_registered_module_empty_manifest() -> None:
+def test_get_module_methods_registered_module_empty_manifest() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
     sender_pub = pk.public_key().public_bytes(
@@ -187,19 +211,19 @@ def test_get_module_functions_registered_module_empty_manifest() -> None:
             "route": {"base_url": "https://s.example"},
             "signing_public_key": sender_pub.hex(),
         },
-        "gmf-reg",
+        "gmm-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
     req = make_validated_inbound(
         pk,
-        "get_module_functions",
+        "get_module_methods",
         {"module_id": "modulr.storage"},
-        "gmf-4",
+        "gmm-4",
     )
     out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
-    assert out["code"] == str(SuccessCode.MODULE_FUNCTIONS_RETURNED)
-    assert out["payload"]["operations"] == []
-    assert out["payload"]["operation_count"] == 0
+    assert out["code"] == str(SuccessCode.MODULE_METHODS_RETURNED)
+    assert out["payload"]["methods"] == []
+    assert out["payload"]["method_count"] == 0
 
 
 def test_get_module_route_modulr_core_default() -> None:

@@ -143,15 +143,19 @@ Bootstrap authorities are trusted identities that can:
 
 The following operations are part of the initial Core implementation:
 
-- `register_module`
+- `get_protocol_version`
+- `get_protocol_methods`
+- `get_module_methods`
 - `lookup_module`
+- `register_module`
 - `register_org`
 - `register_name`
 - `resolve_name`
 - `reverse_resolve_name`
 - `heartbeat_update`
-- `get_protocol_version`
-- `get_module_functions`
+- `submit_module_route`
+- `remove_module_route`
+- `get_module_route`
 
 ---
 
