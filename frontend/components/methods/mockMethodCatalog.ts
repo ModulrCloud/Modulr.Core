@@ -12,10 +12,44 @@ export type MethodParam = {
   multiline?: boolean;
 };
 
+/** Who the operation is for in the product story (matches planned wire catalog). */
+export type MethodCategory = "protocol" | "validator" | "provider" | "client";
+
+export const METHOD_CATEGORY_TABS: readonly {
+  id: MethodCategory;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "protocol",
+    label: "Protocol",
+    description: "Wire contract, version, and liveness — every participating stack should align here.",
+  },
+  {
+    id: "validator",
+    label: "Validator",
+    description:
+      "Coordination plane plus shared protocol surface every validator must speak; modulr.core implements many of these in MVP.",
+  },
+  {
+    id: "provider",
+    label: "Provider",
+    description: "Workload modules — operations they expose once manifests exist.",
+  },
+  {
+    id: "client",
+    label: "Client",
+    description: "Typical app-originated flows — placeholder until defined.",
+  },
+];
+
 export type MethodDef = {
   id: string;
   title: string;
   summary: string;
+  category: MethodCategory;
+  /** MVP: handler implemented by modulr.core; other modules do not reimplement. */
+  coreSurface?: boolean;
   params: MethodParam[];
 };
 
@@ -24,12 +58,15 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "get_protocol_version",
     title: "get_protocol_version",
     summary: "Return the active protocol version string Core is speaking.",
+    category: "protocol",
     params: [],
   },
   {
     id: "lookup_module",
     title: "lookup_module",
     summary: "Resolve a module name to metadata and availability.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_name",
@@ -40,9 +77,10 @@ export const METHOD_CATALOG: MethodDef[] = [
     ],
   },
   {
-    id: "get_module_functions",
-    title: "get_module_functions",
-    summary: "List operations a module advertises (for explorers and clients).",
+    id: "get_module_methods",
+    title: "get_module_methods",
+    summary: "List wire operations a module advertises (for explorers and clients).",
+    category: "validator",
     params: [
       {
         name: "module_id",
@@ -53,10 +91,20 @@ export const METHOD_CATALOG: MethodDef[] = [
     ],
   },
   {
+    id: "get_protocol_methods",
+    title: "get_protocol_methods",
+    summary:
+      "List the base protocol-level wire operations every validator and module should implement (version, protocol surface, liveness) so stacks interoperate — not modulr.core-only.",
+    category: "validator",
+    params: [],
+  },
+  {
     id: "submit_module_route",
     title: "submit_module_route",
     summary:
       "Modules push their reachable route to Core (not “IP” by name — route_type stays protocol-agnostic; today values are IP-style until other transports land).",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -110,6 +158,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     title: "remove_module_route",
     summary:
       "Drop one stored dial for a module (same module_id + route_type + route as submit). Registered modules sign with their module key; modulr.core removals require a bootstrap key when dev_mode is off.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -141,6 +191,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     title: "get_module_route",
     summary:
       "Read back a module’s published route, how it reaches peer networks, and (for modulr.core) active validators.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -154,6 +206,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "report_module_state",
     title: "report_module_state",
     summary: "Module reports where it is in its lifecycle (syncing, running, degraded, …).",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -186,6 +240,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "get_module_state",
     title: "get_module_state",
     summary: "Fetch the last state snapshot Core has for a module (from recent report_module_state calls).",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -196,10 +252,12 @@ export const METHOD_CATALOG: MethodDef[] = [
     ],
   },
   {
-    id: "store_module_code",
-    title: "store_module_code",
+    id: "publish_module_signature",
+    title: "publish_module_signature",
     summary:
-      "Publish methods / surface area for discovery — what this module exposes so Core and clients can wire calls.",
+      "Publish a cryptographic proof that the party registering this module is who they claim to be (e.g. signature over a manifest or release digest) — not “upload source to Core.”",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_id",
@@ -208,15 +266,22 @@ export const METHOD_CATALOG: MethodDef[] = [
         required: true,
       },
       {
-        name: "exposed_operations",
-        label: "Exposed operations",
-        placeholder: "Comma-separated, e.g. transfer, balance, list_collections",
+        name: "signed_subject_digest",
+        label: "Signed subject digest",
+        placeholder: "e.g. sha256:… of manifest, artifact, or attestation document",
         required: true,
       },
       {
-        name: "manifest_notes",
-        label: "Manifest notes (optional)",
-        placeholder: "Optional extra discovery hints, semver, feature flags…",
+        name: "proof_payload",
+        label: "Proof / signature",
+        placeholder: "Detached signature, attestation blob, or proof package (wire format TBD)",
+        required: true,
+        multiline: true,
+      },
+      {
+        name: "context_notes",
+        label: "Context (optional)",
+        placeholder: "Optional human-readable context (semver, release id, …)",
         required: false,
         multiline: true,
       },
@@ -226,6 +291,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_module",
     title: "register_module",
     summary: "Publish a module declaration (bootstrap / authorized senders in production).",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "module_name",
@@ -245,6 +312,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_org",
     title: "register_org",
     summary: "Claim an organization key under Core policy.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "organization_key",
@@ -258,6 +327,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_name",
     title: "register_name",
     summary: "Reserve a human-facing handle bound to an identity.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "name_handle",
@@ -271,6 +342,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "resolve_name",
     title: "resolve_name",
     summary: "Map a name or org label to a target address or record.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "query",
@@ -284,6 +357,8 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "reverse_resolve_name",
     title: "reverse_resolve_name",
     summary: "From a public key or address back to bound names / orgs.",
+    category: "validator",
+    coreSurface: true,
     params: [
       {
         name: "address",
@@ -297,6 +372,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "heartbeat_update",
     title: "heartbeat_update",
     summary: "Lightweight liveness and sync signal for a connected module.",
+    category: "protocol",
     params: [
       {
         name: "module_id",
@@ -323,22 +399,27 @@ function stableAddr(seed: string): string {
   return `0x${hex.slice(0, 40)}`;
 }
 
-/** Operations we show for modulr.core in get_module_functions mock — kept in sync with this catalog. */
+/** Wire operations modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
 const CORE_OPERATION_NAMES = [
-  "get_protocol_version",
-  "lookup_module",
-  "get_module_functions",
-  "submit_module_route",
-  "remove_module_route",
+  "get_module_methods",
   "get_module_route",
-  "report_module_state",
-  "get_module_state",
-  "store_module_code",
+  "get_protocol_methods",
+  "get_protocol_version",
+  "heartbeat_update",
+  "lookup_module",
   "register_module",
-  "register_org",
   "register_name",
+  "register_org",
+  "remove_module_route",
   "resolve_name",
   "reverse_resolve_name",
+  "submit_module_route",
+] as const;
+
+/** Same order as Core `sorted(PROTOCOL_METHOD_OPERATIONS)`. */
+const PROTOCOL_METHOD_NAMES = [
+  "get_protocol_methods",
+  "get_protocol_version",
   "heartbeat_update",
 ] as const;
 
@@ -358,6 +439,16 @@ export function buildMockMethodResponse(
         core_build: "mock-frontend",
         server_time: now,
       };
+    case "get_protocol_methods": {
+      const methods = [...PROTOCOL_METHOD_NAMES];
+      return {
+        status: "ok",
+        methods,
+        method_count: methods.length,
+        request_id: `req_${(seed >>> 0).toString(16).slice(0, 12)}`,
+        server_time: now,
+      };
+    }
     case "lookup_module": {
       const name = payload.module_name?.trim() || "unknown";
       return {
@@ -369,7 +460,7 @@ export function buildMockMethodResponse(
         request_id: `req_${(seed >>> 0).toString(16).slice(0, 12)}`,
       };
     }
-    case "get_module_functions": {
+    case "get_module_methods": {
       const mid = payload.module_id?.trim() || "modulr.core";
       const base =
         mid.toLowerCase() === "modulr.core"
@@ -378,8 +469,8 @@ export function buildMockMethodResponse(
       return {
         status: "ok",
         module_id: mid,
-        operations: base,
-        operation_count: base.length,
+        methods: base,
+        method_count: base.length,
         request_id: `req_${(seed >>> 0).toString(16).slice(0, 12)}`,
       };
     }
@@ -456,19 +547,17 @@ export function buildMockMethodResponse(
         last_updated_at: new Date(Date.now() - (seed % 3600) * 1000).toISOString(),
       };
     }
-    case "store_module_code": {
-      const ops = (payload.exposed_operations ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    case "publish_module_signature": {
+      const digest = payload.signed_subject_digest?.trim() || "";
       return {
         status: "accepted_mock",
         module_id: payload.module_id?.trim(),
-        discovery_operations: ops,
-        operation_count: ops.length,
-        manifest_notes: payload.manifest_notes?.trim() || null,
-        bytes_indexed_hint: 1200 + (seed % 8000),
-        message: "Core would index this manifest for discovery UIs and dependency tracing.",
+        signed_subject_digest: digest || null,
+        proof_registered_hint: digest.length > 8 && seed % 5 !== 0,
+        context_notes: payload.context_notes?.trim() || null,
+        recorded_at: now,
+        message:
+          "Core would verify the proof binds this module identity to the publisher’s claimed key or upstream identity — not store module source here.",
       };
     }
     case "register_module":
