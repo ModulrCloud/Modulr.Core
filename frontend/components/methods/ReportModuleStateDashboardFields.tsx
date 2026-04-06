@@ -1,6 +1,6 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 
 import type {
   DashboardCardInput,
@@ -10,13 +10,17 @@ import type {
 import {
   FIXED_STANDARD_METRIC_CARD_COUNT,
   FIXED_STANDARD_METRIC_CARDS,
-  HEALTH_ACTIVITY_UI,
+  HEALTH_AUX_LABEL_MAX_CHARS,
+  HEALTH_AUX_SERIES_UI,
+  HEALTH_JOBS_UI,
   MAX_CARD_DESCRIPTION_CHARS,
   MAX_CUSTOM_DASHBOARD_CARDS,
   MAX_DASHBOARD_PIES,
   MAX_PIE_DESCRIPTION_CHARS,
   MAX_PIE_SLICES,
   NOTES_UI,
+  parseHealthAuxLabel,
+  parseHealthSeries24Csv,
   VALIDATOR_STATUS_PIE_UI,
 } from "@/lib/reportModuleStateDetail";
 
@@ -37,6 +41,85 @@ const emptyPie = (): DashboardPieInput => ({
   slices: [emptySlice(), emptySlice(), emptySlice()],
 });
 
+const HEALTH_PREVIEW_COLORS = {
+  jobs: "var(--modulr-accent)",
+  aux1: "#38bdf8",
+  aux2: "#8b5cf6",
+} as const;
+
+function parseHealthPreviewSeries(values: Record<string, string>):
+  | { ok: true; series: { name: string; points: number[]; stroke: string }[] }
+  | { ok: false } {
+  const jobs = parseHealthSeries24Csv(values[HEALTH_JOBS_UI.pointsKey], "Jobs");
+  if (!jobs.ok) return { ok: false };
+  const a1l = parseHealthAuxLabel(values[HEALTH_AUX_SERIES_UI[0]!.labelKey], "Aux 1 label");
+  if (!a1l.ok) return { ok: false };
+  const a1p = parseHealthSeries24Csv(values[HEALTH_AUX_SERIES_UI[0]!.pointsKey], "Aux 1");
+  if (!a1p.ok) return { ok: false };
+  const a2l = parseHealthAuxLabel(values[HEALTH_AUX_SERIES_UI[1]!.labelKey], "Aux 2 label");
+  if (!a2l.ok) return { ok: false };
+  const a2p = parseHealthSeries24Csv(values[HEALTH_AUX_SERIES_UI[1]!.pointsKey], "Aux 2");
+  if (!a2p.ok) return { ok: false };
+  return {
+    ok: true,
+    series: [
+      { name: "Jobs", points: jobs.points, stroke: HEALTH_PREVIEW_COLORS.jobs },
+      { name: a1l.label, points: a1p.points, stroke: HEALTH_PREVIEW_COLORS.aux1 },
+      { name: a2l.label, points: a2p.points, stroke: HEALTH_PREVIEW_COLORS.aux2 },
+    ],
+  };
+}
+
+function HealthActivitySparkPreview({
+  series,
+}: {
+  series: { name: string; points: number[]; stroke: string }[];
+}) {
+  const w = 100;
+  const h = 36;
+  const max = Math.max(1e-9, ...series.flatMap((s) => s.points));
+  const pathFor = (points: number[]) =>
+    points
+      .map((v, i) => {
+        const x = (i / 23) * w;
+        const y = h - (v / max) * h;
+        return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  return (
+    <div className="mt-4 rounded-md border border-[var(--modulr-glass-border)]/80 bg-[var(--modulr-page-bg)]/25 p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+        Preview (normalized to shared scale)
+      </p>
+      <svg
+        className="mt-2 block h-28 w-full"
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {series.map((s) => (
+          <path
+            key={s.name}
+            d={pathFor(s.points)}
+            fill="none"
+            stroke={s.stroke}
+            strokeWidth={0.9}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[var(--modulr-text-muted)]">
+        {series.map((s) => (
+          <li key={s.name} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 shrink-0 rounded-sm" style={{ backgroundColor: s.stroke }} />
+            <span className="truncate">{s.name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 type Props = {
   values: Record<string, string>;
   onValueChange: (name: string, v: string) => void;
@@ -50,6 +133,8 @@ export function ReportModuleStateDashboardFields({
   dashboard,
   setDashboard,
 }: Props) {
+  const healthPreview = useMemo(() => parseHealthPreviewSeries(values), [values]);
+
   return (
     <div className="mt-6 space-y-8 border-t border-[var(--modulr-glass-border)] pt-6">
       <section>
@@ -440,22 +525,70 @@ export function ReportModuleStateDashboardFields({
 
       <section>
         <p className="text-xs font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
-          {HEALTH_ACTIVITY_UI.title}
+          Health & activity (24h)
         </p>
-        <div className="mt-3 rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/15 p-3 sm:p-4">
-          <p className={roBody}>{HEALTH_ACTIVITY_UI.description}</p>
-          <label className="mt-3 block text-xs font-medium text-[var(--modulr-text-muted)]">
-            24 hourly values (comma-separated)
-          </label>
-          <textarea
-            value={values[HEALTH_ACTIVITY_UI.valueKey] ?? ""}
-            onChange={(e) => onValueChange(HEALTH_ACTIVITY_UI.valueKey, e.target.value)}
-            rows={4}
-            className={ta}
-            placeholder="e.g. 0.95, 0.96, … (24 numbers)"
-            spellCheck={false}
-          />
+        <p className="modulr-text-muted mt-1 text-[11px] leading-relaxed">
+          Schema v2: hourly <code className="text-[var(--modulr-text)]">jobs_points</code> plus two labeled series on
+          the wire. Each row is 24 non-negative numbers (comma-separated).
+        </p>
+        <div className="mt-3 space-y-4">
+          <div className="rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/15 p-3 sm:p-4">
+            <span className="text-[11px] font-medium text-[var(--modulr-text-muted)]">Fixed series</span>
+            <p className={roTitle}>{HEALTH_JOBS_UI.title}</p>
+            <p className={`${roBody} mt-2`}>{HEALTH_JOBS_UI.description}</p>
+            <label className="mt-3 block text-xs font-medium text-[var(--modulr-text-muted)]">
+              24 hourly values (comma-separated)
+            </label>
+            <textarea
+              value={values[HEALTH_JOBS_UI.pointsKey] ?? ""}
+              onChange={(e) => onValueChange(HEALTH_JOBS_UI.pointsKey, e.target.value)}
+              rows={3}
+              className={ta}
+              placeholder="e.g. 120, 128, … (24 non-negative numbers)"
+              spellCheck={false}
+            />
+          </div>
+          {HEALTH_AUX_SERIES_UI.map((row) => (
+            <div
+              key={row.labelKey}
+              className="rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/15 p-3 sm:p-4"
+            >
+              <span className="text-[11px] font-medium text-[var(--modulr-text-muted)]">{row.title}</span>
+              <p className={`${roBody} mt-2`}>{row.description}</p>
+              <label className="mt-3 block text-xs font-medium text-[var(--modulr-text-muted)]">Label</label>
+              <input
+                type="text"
+                value={values[row.labelKey] ?? ""}
+                onChange={(e) =>
+                  onValueChange(row.labelKey, e.target.value.slice(0, HEALTH_AUX_LABEL_MAX_CHARS))
+                }
+                maxLength={HEALTH_AUX_LABEL_MAX_CHARS}
+                className={inp}
+                placeholder={`Required, max ${HEALTH_AUX_LABEL_MAX_CHARS} characters`}
+                autoComplete="off"
+              />
+              <label className="mt-2 block text-xs font-medium text-[var(--modulr-text-muted)]">
+                24 hourly values (comma-separated)
+              </label>
+              <textarea
+                value={values[row.pointsKey] ?? ""}
+                onChange={(e) => onValueChange(row.pointsKey, e.target.value)}
+                rows={3}
+                className={ta}
+                placeholder="24 non-negative numbers"
+                spellCheck={false}
+              />
+            </div>
+          ))}
         </div>
+        {healthPreview.ok ? (
+          <HealthActivitySparkPreview series={healthPreview.series} />
+        ) : (
+          <p className="modulr-text-muted mt-3 text-[11px] leading-relaxed">
+            Preview appears when all three rows parse (24 non-negative values each; aux labels non-empty, ≤{" "}
+            {HEALTH_AUX_LABEL_MAX_CHARS} chars).
+          </p>
+        )}
       </section>
     </div>
   );

@@ -1,10 +1,10 @@
 /**
- * `report_module_state` payload.detail — JSON schema v1: core metrics, 24h health,
- * extra dashboard_cards (Core allows ≤10; UI uses 6 fixed metrics + up to 4 custom),
- * pies (≤4, ≤5 slices each).
+ * `report_module_state` payload.detail — JSON schema v2: core metrics, 24h health
+ * (jobs + two labeled auxiliary series), extra dashboard_cards (Core allows ≤10;
+ * UI uses 6 fixed metrics + up to 4 custom), pies (≤4, ≤5 slices each).
  */
 
-export const REPORT_MODULE_STATE_DETAIL_SCHEMA_VERSION = 1;
+export const REPORT_MODULE_STATE_DETAIL_SCHEMA_VERSION = 2;
 
 /** Core accepts up to this many `dashboard_cards` entries. */
 export const MAX_DASHBOARD_CARDS = 10;
@@ -60,12 +60,30 @@ export const VALIDATOR_STATUS_PIE_UI = {
   ],
 } as const;
 
-export const HEALTH_ACTIVITY_UI = {
-  title: "Health & activity (24h)",
+/** Max length for user-defined auxiliary series labels (must match Core). */
+export const HEALTH_AUX_LABEL_MAX_CHARS = 40;
+
+export const HEALTH_JOBS_UI = {
+  title: "Jobs (fixed series)",
   description:
-    "One numeric sample per clock hour (24 comma-separated values). Rates, scores, or error budgets — Core stores the series as-is.",
-  valueKey: "health_activity_csv",
+    "Jobs posted per clock hour over the last 24 hours — one non-negative number per hour, comma-separated.",
+  pointsKey: "ha_jobs_csv",
 } as const;
+
+export const HEALTH_AUX_SERIES_UI = [
+  {
+    title: "Auxiliary series 1",
+    description: "Your label (required, max 40 characters) and 24 hourly non-negative values.",
+    labelKey: "ha_aux1_label",
+    pointsKey: "ha_aux1_csv",
+  },
+  {
+    title: "Auxiliary series 2",
+    description: "Your label (required, max 40 characters) and 24 hourly non-negative values.",
+    labelKey: "ha_aux2_label",
+    pointsKey: "ha_aux2_csv",
+  },
+] as const;
 
 export const NOTES_UI = {
   title: "Notes",
@@ -110,23 +128,47 @@ function parsePct(raw: string | undefined, field: string): { ok: true; n: number
   return { ok: true, n };
 }
 
-/** Parse 24 hourly samples (comma-separated numbers, e.g. success rate 0–1 per hour). */
-export function parseHealthActivity24hCsv(raw: string | undefined): { ok: true; points: number[] } | { ok: false; error: string } {
+/** Parse 24 hourly non-negative samples (comma-separated). */
+export function parseHealthSeries24Csv(
+  raw: string | undefined,
+  fieldLabel: string,
+): { ok: true; points: number[] } | { ok: false; error: string } {
   const s = raw?.trim() ?? "";
-  if (!s) return { ok: false, error: "Health & activity (24 hourly values) is required" };
+  if (!s) return { ok: false, error: `${fieldLabel} is required` };
   const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length !== 24) {
-    return { ok: false, error: "Health & activity must be exactly 24 comma-separated numbers (one per hour)" };
+    return {
+      ok: false,
+      error: `${fieldLabel} must be exactly 24 comma-separated non-negative numbers`,
+    };
   }
   const points: number[] = [];
   for (let i = 0; i < parts.length; i++) {
     const x = Number(parts[i]);
     if (!Number.isFinite(x)) {
-      return { ok: false, error: `Hour ${i + 1} is not a valid number` };
+      return { ok: false, error: `${fieldLabel}: hour ${i + 1} is not a valid number` };
+    }
+    if (x < 0) {
+      return { ok: false, error: `${fieldLabel}: hour ${i + 1} must be non-negative` };
     }
     points.push(x);
   }
   return { ok: true, points };
+}
+
+export function parseHealthAuxLabel(
+  raw: string | undefined,
+  fieldLabel: string,
+): { ok: true; label: string } | { ok: false; error: string } {
+  const s = raw?.trim() ?? "";
+  if (!s) return { ok: false, error: `${fieldLabel} is required` };
+  if (s.length > HEALTH_AUX_LABEL_MAX_CHARS) {
+    return {
+      ok: false,
+      error: `${fieldLabel} must be at most ${HEALTH_AUX_LABEL_MAX_CHARS} characters`,
+    };
+  }
+  return { ok: true, label: s };
 }
 
 function buildDashboardCardsJson(
@@ -286,8 +328,22 @@ export function composeReportModuleStateDetailJson(
     return { ok: false, error: "Validator status percentages must sum to 100" };
   }
 
-  const hp = parseHealthActivity24hCsv(values.health_activity_csv);
-  if (!hp.ok) return hp;
+  const jobs = parseHealthSeries24Csv(values[HEALTH_JOBS_UI.pointsKey], "Jobs (24 hourly values)");
+  if (!jobs.ok) return jobs;
+  const a1l = parseHealthAuxLabel(values[HEALTH_AUX_SERIES_UI[0]!.labelKey], "Auxiliary series 1 label");
+  if (!a1l.ok) return a1l;
+  const a1p = parseHealthSeries24Csv(
+    values[HEALTH_AUX_SERIES_UI[0]!.pointsKey],
+    `Auxiliary series 1 (${a1l.label})`,
+  );
+  if (!a1p.ok) return a1p;
+  const a2l = parseHealthAuxLabel(values[HEALTH_AUX_SERIES_UI[1]!.labelKey], "Auxiliary series 2 label");
+  if (!a2l.ok) return a2l;
+  const a2p = parseHealthSeries24Csv(
+    values[HEALTH_AUX_SERIES_UI[1]!.pointsKey],
+    `Auxiliary series 2 (${a2l.label})`,
+  );
+  if (!a2p.ok) return a2p;
 
   const dc = buildDashboardCardsJson(dashboard.cards);
   if (!dc.ok) return dc;
@@ -312,7 +368,11 @@ export function composeReportModuleStateDetailJson(
     },
     health_activity_24h: {
       granularity_hours: 1,
-      points: hp.points,
+      jobs_points: jobs.points,
+      aux1_label: a1l.label,
+      aux1_points: a1p.points,
+      aux2_label: a2l.label,
+      aux2_points: a2p.points,
     },
     dashboard_cards: dc.cards,
     dashboard_pies: dp.pies,
@@ -332,8 +392,12 @@ export function reportModuleStateMockFormPatch(): Record<string, string> {
   val.a = Math.round((r1 / t) * 100);
   val.b = Math.round((r2 / t) * 100);
   val.c = 100 - val.a - val.b;
-  const points = Array.from({ length: 24 }, (_, i) =>
-    Number((0.82 + (i % 5) * 0.02 + (i % 3) * 0.01).toFixed(4)),
+  const jobs = Array.from({ length: 24 }, (_, i) =>
+    Math.round(120 + (i % 7) * 8 + (i % 4) * 3),
+  );
+  const err = Array.from({ length: 24 }, (_, i) => 2 + (i % 6) + ((i * 3) % 5));
+  const lat = Array.from({ length: 24 }, (_, i) =>
+    Number((18 + (i % 6) * 2.1 + (i % 3)).toFixed(1)),
   );
   return {
     metric_total_users: "45120",
@@ -345,7 +409,11 @@ export function reportModuleStateMockFormPatch(): Record<string, string> {
     val_pct_active: String(val.a),
     val_pct_passive: String(val.b),
     val_pct_offline: String(val.c),
-    health_activity_csv: points.join(", "),
+    [HEALTH_JOBS_UI.pointsKey]: jobs.join(", "),
+    [HEALTH_AUX_SERIES_UI[0]!.labelKey]: "Errors",
+    [HEALTH_AUX_SERIES_UI[0]!.pointsKey]: err.join(", "),
+    [HEALTH_AUX_SERIES_UI[1]!.labelKey]: "Latency",
+    [HEALTH_AUX_SERIES_UI[1]!.pointsKey]: lat.join(", "),
     detail_notes: "Playground sample — swap numbers to match your module.",
   };
 }

@@ -1485,7 +1485,7 @@ def test_get_module_state_unknown_module() -> None:
 
 def _valid_report_module_state_detail(*, notes: str | None = None) -> str:
     obj: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "metrics": {
             "total_users": 100,
             "active_users": 42,
@@ -1495,7 +1495,14 @@ def _valid_report_module_state_detail(*, notes: str | None = None) -> str:
             "active_jobs": 3,
         },
         "validator_status_pct": {"active": 55, "passive": 30, "offline": 15},
-        "health_activity_24h": {"granularity_hours": 1, "points": [0.99] * 24},
+        "health_activity_24h": {
+            "granularity_hours": 1,
+            "jobs_points": [0.99] * 24,
+            "aux1_label": "Errors",
+            "aux1_points": [0.01] * 24,
+            "aux2_label": "Latency",
+            "aux2_points": [12.0] * 24,
+        },
         "dashboard_cards": [
             {"title": "Smoke card", "value": 1, "description": "Minimal valid card."},
         ],
@@ -1670,7 +1677,7 @@ def test_report_module_state_detail_invalid_validator_pct_sum() -> None:
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
     bad_detail = json.dumps(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "metrics": {
                 "total_users": 1,
                 "active_users": 1,
@@ -1680,7 +1687,14 @@ def test_report_module_state_detail_invalid_validator_pct_sum() -> None:
                 "active_jobs": 1,
             },
             "validator_status_pct": {"active": 10, "passive": 10, "offline": 10},
-            "health_activity_24h": {"granularity_hours": 1, "points": [1.0] * 24},
+            "health_activity_24h": {
+                "granularity_hours": 1,
+                "jobs_points": [1.0] * 24,
+                "aux1_label": "A",
+                "aux1_points": [0.0] * 24,
+                "aux2_label": "B",
+                "aux2_points": [0.0] * 24,
+            },
             "dashboard_cards": [
                 {"title": "x", "value": 1, "description": "y"},
             ],
@@ -1761,9 +1775,9 @@ def test_report_module_state_rejects_non_finite_health_point() -> None:
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
     bad = json.loads(_valid_report_module_state_detail())
-    pts = list(bad["health_activity_24h"]["points"])
-    pts[0] = float("inf")
-    bad["health_activity_24h"] = {**bad["health_activity_24h"], "points": pts}
+    jp = list(bad["health_activity_24h"]["jobs_points"])
+    jp[0] = float("inf")
+    bad["health_activity_24h"] = {**bad["health_activity_24h"], "jobs_points": jp}
     detail = json.dumps(bad, separators=(",", ":"), sort_keys=True)
     req = make_validated_inbound(
         pk,
@@ -1774,6 +1788,141 @@ def test_report_module_state_rejects_non_finite_health_point() -> None:
             "detail": detail,
         },
         "rms-inf2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_report_module_state_rejects_negative_jobs_point() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-neg1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    bad = json.loads(_valid_report_module_state_detail())
+    jp = list(bad["health_activity_24h"]["jobs_points"])
+    jp[0] = -1.0
+    bad["health_activity_24h"] = {**bad["health_activity_24h"], "jobs_points": jp}
+    detail = json.dumps(bad, separators=(",", ":"), sort_keys=True)
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": detail,
+        },
+        "rms-neg2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_report_module_state_strips_unknown_health_keys_with_warning() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-warn1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    obj = json.loads(_valid_report_module_state_detail())
+    obj["health_activity_24h"]["legacy_points"] = [0.5] * 24
+    detail = json.dumps(obj, separators=(",", ":"), sort_keys=True)
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": detail,
+        },
+        "rms-warn2",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert out["code"] == str(SuccessCode.MODULE_STATE_REPORTED)
+    warns = out["payload"].get("warnings")
+    assert isinstance(warns, list)
+    assert any("legacy_points" in w for w in warns)
+    stored = json.loads(out["payload"]["detail"])
+    assert "legacy_points" not in stored["health_activity_24h"]
+
+
+def test_report_module_state_rejects_schema_version_1_detail() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-v1-1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    legacy = json.dumps(
+        {
+            "schema_version": 1,
+            "metrics": {
+                "total_users": 1,
+                "active_users": 1,
+                "subscribers": 1,
+                "validators": 1,
+                "providers": 1,
+                "active_jobs": 1,
+            },
+            "validator_status_pct": {"active": 34, "passive": 33, "offline": 33},
+            "health_activity_24h": {"granularity_hours": 1, "points": [1.0] * 24},
+            "dashboard_cards": [
+                {"title": "x", "value": 1, "description": "y"},
+            ],
+            "dashboard_pies": [],
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": legacy,
+        },
+        "rms-v1-2",
     )
     with pytest.raises(WireValidationError) as ei:
         dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
