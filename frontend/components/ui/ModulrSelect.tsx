@@ -139,7 +139,7 @@ export function ModulrSelect({
           id={listId}
           role="listbox"
           aria-labelledby={triggerId}
-          className="modulr-select-list"
+          className="modulr-select-list modulr-scrollbar"
         >
           {options.map((o, i) => (
             <li

@@ -167,7 +167,7 @@ function GenericKeyValueList({ data }: { data: Record<string, unknown> }) {
                 ))}
               </ul>
             ) : typeof value === "object" && value !== null ? (
-              <pre className="overflow-x-auto rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/40 p-3 font-mono text-xs leading-relaxed">
+              <pre className="modulr-scrollbar overflow-x-auto rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/40 p-3 font-mono text-xs leading-relaxed">
                 {JSON.stringify(value, null, 2)}
               </pre>
             ) : (
@@ -198,7 +198,7 @@ export function PrettyMockResponse({ data }: { data: Record<string, unknown> }) 
           <summary className="cursor-pointer text-xs font-medium text-[var(--modulr-text-muted)]">
             Raw envelope (debug)
           </summary>
-          <pre className="mt-2 max-h-64 overflow-auto rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/40 p-3 font-mono text-[10px] leading-relaxed">
+          <pre className="modulr-scrollbar mt-2 max-h-64 overflow-auto rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/40 p-3 font-mono text-[10px] leading-relaxed">
             {JSON.stringify(data, null, 2)}
           </pre>
         </details>

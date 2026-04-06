@@ -212,11 +212,12 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         group="telemetry",
         summary="Submit a lifecycle snapshot for a registered module.",
         description=(
-            "Modules report state_phase (e.g. running, syncing, degraded) and "
-            "optional detail so validators and dashboards can aggregate health and "
-            "activity. Sender must match the module signing key. Shared protocol "
-            "surface: every participating module is expected to report; richer "
-            "metrics can extend this contract later."
+            "Modules report state_phase (coarse lifecycle: running, syncing, "
+            "degraded, maintenance) and required detail: JSON with schema_version 1 "
+            "and dashboard metrics (user/subscriber/validator/provider/job counts, "
+            "validator_status_pct summing to 100, health_activity_24h with 24 hourly "
+            "points). Sender must match the module signing key. Liveness vs peers "
+            "remains heartbeat_update; this snapshot feeds homepage-style rollups."
         ),
         payload_contract="report_module_state",
         protocol_surface=True,

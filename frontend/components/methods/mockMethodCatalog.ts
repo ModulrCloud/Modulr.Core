@@ -1,4 +1,8 @@
 import { hashString } from "@/components/dashboard/mockModuleMetrics";
+import {
+  composeReportModuleStateDetailJson,
+  defaultReportModuleDashboard,
+} from "@/lib/reportModuleStateDetail";
 
 export type MethodParam = {
   name: string;
@@ -150,7 +154,7 @@ export const METHOD_CATALOG: MethodDef[] = [
       },
       {
         name: "endpoint_signing_public_key_hex",
-        label: "Endpoint Ed25519 pubkey hex (optional)",
+        label: "Endpoint Ed25519 pubkey hex",
         placeholder: "64 lowercase hex chars",
         required: false,
       },
@@ -209,31 +213,92 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "report_module_state",
     title: "report_module_state",
     summary:
-      "Report lifecycle phase and optional detail — shared protocol surface every module is expected to use so validators can aggregate dashboard metrics.",
+      "Coarse lifecycle phase plus required dashboard-metrics JSON (schema v1): card-style counts, validator status %, 24 hourly health samples. Heartbeat_update is liveness; this is the rollup snapshot for explorers.",
     category: "validator",
     params: [
       {
         name: "module_id",
         label: "Module id",
-        placeholder: "e.g. modulr.core",
+        placeholder: "e.g. modulr.storage",
         required: true,
       },
       {
         name: "state_phase",
-        label: "State",
+        label: "Lifecycle phase",
         placeholder: "",
         required: true,
         options: [
-          { value: "running", label: "running" },
-          { value: "syncing", label: "syncing" },
-          { value: "degraded", label: "degraded" },
-          { value: "maintenance", label: "maintenance" },
+          { value: "running", label: "running — operating normally" },
+          { value: "syncing", label: "syncing — catching up" },
+          { value: "degraded", label: "degraded — reduced capacity" },
+          { value: "maintenance", label: "maintenance — intentional downtime" },
         ],
       },
       {
-        name: "detail",
-        label: "Detail (optional)",
-        placeholder: "e.g. caught up through epoch 1284",
+        name: "metric_total_users",
+        label: "Total users",
+        placeholder: "integer",
+        required: true,
+      },
+      {
+        name: "metric_active_users",
+        label: "Active users",
+        placeholder: "integer",
+        required: true,
+      },
+      {
+        name: "metric_subscribers",
+        label: "Subscribers",
+        placeholder: "integer",
+        required: true,
+      },
+      {
+        name: "metric_validators",
+        label: "Validators",
+        placeholder: "integer (count on this module)",
+        required: true,
+      },
+      {
+        name: "metric_providers",
+        label: "Providers",
+        placeholder: "integer",
+        required: true,
+      },
+      {
+        name: "metric_active_jobs",
+        label: "Active jobs",
+        placeholder: "integer",
+        required: true,
+      },
+      {
+        name: "val_pct_active",
+        label: "Validator status — active %",
+        placeholder: "0–100",
+        required: true,
+      },
+      {
+        name: "val_pct_passive",
+        label: "Validator status — passive %",
+        placeholder: "0–100",
+        required: true,
+      },
+      {
+        name: "val_pct_offline",
+        label: "Validator status — offline %",
+        placeholder: "0–100 (must sum to 100 with active + passive)",
+        required: true,
+      },
+      {
+        name: "health_activity_csv",
+        label: "Health & activity (24 hourly values)",
+        placeholder: "24 comma-separated numbers, e.g. 0.95, 0.96, … (one per hour)",
+        required: true,
+        multiline: true,
+      },
+      {
+        name: "detail_notes",
+        label: "Notes",
+        placeholder: "Human-readable context; stored inside JSON as notes",
         required: false,
         multiline: true,
       },
@@ -385,7 +450,7 @@ export const METHOD_CATALOG: MethodDef[] = [
       },
       {
         name: "note",
-        label: "Note (optional)",
+        label: "Note",
         placeholder: "e.g. validator set synced",
         required: false,
       },
@@ -574,14 +639,17 @@ export function buildMockMethodResponse(
         ...(isCore ? { active_validators: validators } : {}),
       };
     }
-    case "report_module_state":
+    case "report_module_state": {
+      const composed = composeReportModuleStateDetailJson(payload, defaultReportModuleDashboard());
       return {
         status: "accepted_mock",
         module_id: payload.module_id?.trim(),
         state_phase: payload.state_phase?.trim(),
-        detail: payload.detail?.trim() || null,
+        detail: composed.ok ? composed.detail : null,
+        detail_error: composed.ok ? null : composed.error,
         recorded_at: now,
       };
+    }
     case "get_module_state": {
       const mid = payload.module_id?.trim() || "modulr.core";
       const phases = ["running", "syncing", "degraded", "maintenance"] as const;

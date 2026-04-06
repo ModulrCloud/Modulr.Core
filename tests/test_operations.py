@@ -1483,13 +1483,40 @@ def test_get_module_state_unknown_module() -> None:
     assert ei.value.code is ErrorCode.MODULE_NOT_FOUND
 
 
+def _valid_report_module_state_detail(*, notes: str | None = None) -> str:
+    obj: dict[str, Any] = {
+        "schema_version": 1,
+        "metrics": {
+            "total_users": 100,
+            "active_users": 42,
+            "subscribers": 80,
+            "validators": 5,
+            "providers": 12,
+            "active_jobs": 3,
+        },
+        "validator_status_pct": {"active": 55, "passive": 30, "offline": 15},
+        "health_activity_24h": {"granularity_hours": 1, "points": [0.99] * 24},
+        "dashboard_cards": [
+            {"title": "Smoke card", "value": 1, "description": "Minimal valid card."},
+        ],
+        "dashboard_pies": [],
+    }
+    if notes is not None:
+        obj["notes"] = notes
+    return json.dumps(obj, separators=(",", ":"), sort_keys=True)
+
+
 def test_report_module_state_requires_registration() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
     req = make_validated_inbound(
         pk,
         "report_module_state",
-        {"module_id": "modulr.storage", "state_phase": "running"},
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": _valid_report_module_state_detail(),
+        },
         "rms-1",
     )
     with pytest.raises(WireValidationError) as ei:
@@ -1519,7 +1546,11 @@ def test_report_module_state_invalid_phase() -> None:
     bad = make_validated_inbound(
         pk,
         "report_module_state",
-        {"module_id": "modulr.storage", "state_phase": "exploding"},
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "exploding",
+            "detail": _valid_report_module_state_detail(),
+        },
         "rms-bad",
     )
     with pytest.raises(WireValidationError) as ei:
@@ -1546,13 +1577,14 @@ def test_report_module_state_then_get() -> None:
         "rms-r1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    expected_detail = _valid_report_module_state_detail(notes="disk slow")
     rep = make_validated_inbound(
         pk,
         "report_module_state",
         {
             "module_id": "modulr.storage",
             "state_phase": "degraded",
-            "detail": "disk slow",
+            "detail": expected_detail,
         },
         "rms-r2",
     )
@@ -1564,7 +1596,7 @@ def test_report_module_state_then_get() -> None:
     )
     assert out_rep["code"] == str(SuccessCode.MODULE_STATE_REPORTED)
     assert out_rep["payload"]["state_phase"] == "degraded"
-    assert out_rep["payload"]["detail"] == "disk slow"
+    assert out_rep["payload"]["detail"] == expected_detail
     assert out_rep["payload"]["reported_at"] == 77
 
     any_pk = Ed25519PrivateKey.generate()
@@ -1583,8 +1615,93 @@ def test_report_module_state_then_get() -> None:
     assert out_get["code"] == str(SuccessCode.MODULE_STATE_SNAPSHOT_RETURNED)
     assert out_get["payload"]["module_id"] == "modulr.storage"
     assert out_get["payload"]["state_phase"] == "degraded"
-    assert out_get["payload"]["detail"] == "disk slow"
+    assert out_get["payload"]["detail"] == expected_detail
     assert out_get["payload"]["reported_at"] == 77
+
+
+def test_report_module_state_detail_required() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-dr1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {"module_id": "modulr.storage", "state_phase": "running"},
+        "rms-dr2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_report_module_state_detail_invalid_validator_pct_sum() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-dv1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    bad_detail = json.dumps(
+        {
+            "schema_version": 1,
+            "metrics": {
+                "total_users": 1,
+                "active_users": 1,
+                "subscribers": 1,
+                "validators": 1,
+                "providers": 1,
+                "active_jobs": 1,
+            },
+            "validator_status_pct": {"active": 10, "passive": 10, "offline": 10},
+            "health_activity_24h": {"granularity_hours": 1, "points": [1.0] * 24},
+            "dashboard_cards": [
+                {"title": "x", "value": 1, "description": "y"},
+            ],
+            "dashboard_pies": [],
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": bad_detail,
+        },
+        "rms-dv2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
 
 
 def test_register_name_resolve_and_reverse() -> None:

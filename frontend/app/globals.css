@@ -301,3 +301,36 @@ body {
 .modulr-select-option--selected:not(.modulr-select-option--hl) {
   background-color: color-mix(in srgb, var(--modulr-text) 6%, transparent);
 }
+
+/**
+ * Themed scrollbars — Modulr yellow thumb (#ffb700), glassy track.
+ */
+.modulr-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #ffb700 var(--modulr-page-bg-2);
+}
+
+.modulr-scrollbar::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.modulr-scrollbar::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: var(--modulr-page-bg-2);
+  border-radius: 999px;
+}
+
+.modulr-scrollbar::-webkit-scrollbar-thumb {
+  background: #ffb700;
+  border-radius: 999px;
+  border: 2px solid var(--modulr-page-bg-2);
+}
+
+.modulr-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, #ffb700 88%, white);
+}
+
+.modulr-scrollbar::-webkit-scrollbar-corner {
+  background: var(--modulr-page-bg-2);
+}
