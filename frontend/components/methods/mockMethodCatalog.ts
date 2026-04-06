@@ -14,6 +14,8 @@ export type MethodParam = {
   options?: { value: string; label: string }[];
   /** Renders as textarea */
   multiline?: boolean;
+  /** When true, value is collected but rendered in a custom block (e.g. report_module_state). */
+  hidden?: boolean;
 };
 
 /** Which product slice this method belongs to (matches planned wire catalog). */
@@ -239,54 +241,63 @@ export const METHOD_CATALOG: MethodDef[] = [
         label: "Total users",
         placeholder: "integer",
         required: true,
+        hidden: true,
       },
       {
         name: "metric_active_users",
         label: "Active users",
         placeholder: "integer",
         required: true,
+        hidden: true,
       },
       {
         name: "metric_subscribers",
         label: "Subscribers",
         placeholder: "integer",
         required: true,
+        hidden: true,
       },
       {
         name: "metric_validators",
         label: "Validators",
         placeholder: "integer (count on this module)",
         required: true,
+        hidden: true,
       },
       {
         name: "metric_providers",
         label: "Providers",
         placeholder: "integer",
         required: true,
+        hidden: true,
       },
       {
         name: "metric_active_jobs",
         label: "Active jobs",
         placeholder: "integer",
         required: true,
+        hidden: true,
       },
       {
         name: "val_pct_active",
         label: "Validator status — active %",
         placeholder: "0–100",
         required: true,
+        hidden: true,
       },
       {
         name: "val_pct_passive",
         label: "Validator status — passive %",
         placeholder: "0–100",
         required: true,
+        hidden: true,
       },
       {
         name: "val_pct_offline",
         label: "Validator status — offline %",
         placeholder: "0–100 (must sum to 100 with active + passive)",
         required: true,
+        hidden: true,
       },
       {
         name: "health_activity_csv",
@@ -294,6 +305,7 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "24 comma-separated numbers, e.g. 0.95, 0.96, … (one per hour)",
         required: true,
         multiline: true,
+        hidden: true,
       },
       {
         name: "detail_notes",
@@ -301,6 +313,7 @@ export const METHOD_CATALOG: MethodDef[] = [
         placeholder: "Human-readable context; stored inside JSON as notes",
         required: false,
         multiline: true,
+        hidden: true,
       },
     ],
   },

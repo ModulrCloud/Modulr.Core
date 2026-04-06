@@ -41,6 +41,23 @@ function delay(ms: number): Promise<void> {
 /** Max methods shown in the sidebar list before paginating (keeps the nav scannable). */
 const METHODS_PAGE_SIZE = 14;
 
+function buildInitialValuesForMethod(
+  def: MethodDef,
+  prev: Record<string, string>,
+): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const p of def.params) {
+    if (p.hidden) {
+      next[p.name] = prev[p.name] ?? "";
+    } else if (p.options?.length) {
+      next[p.name] = p.options[0]!.value;
+    } else {
+      next[p.name] = "";
+    }
+  }
+  return next;
+}
+
 const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_protocol_version",
   "get_protocol_methods",
@@ -142,11 +159,7 @@ export function MethodsMock() {
 
   useEffect(() => {
     if (!selected) return;
-    const next: Record<string, string> = {};
-    selected.params.forEach((p) => {
-      if (p.options?.length) next[p.name] = p.options[0]!.value;
-    });
-    setValues(next);
+    setValues((prev) => buildInitialValuesForMethod(selected, prev));
   }, [selected]);
 
   useEffect(() => {
@@ -164,18 +177,20 @@ export function MethodsMock() {
     setError(null);
     setResult(null);
     const def = METHOD_CATALOG.find((m) => m.id === id);
-    const next: Record<string, string> = {};
-    def?.params.forEach((p) => {
-      if (p.options?.length) next[p.name] = p.options[0]!.value;
-    });
-    setValues(next);
+    if (def) {
+      setValues((prev) => buildInitialValuesForMethod(def, prev));
+    } else {
+      setValues({});
+    }
   }, []);
 
   const runExecute = useCallback(async () => {
     setError(null);
     setResult(null);
     if (!selected) return;
-    const missing = selected.params.filter((p) => p.required !== false && !values[p.name]?.trim());
+    const missing = selected.params.filter(
+      (p) => p.required !== false && !p.hidden && !values[p.name]?.trim(),
+    );
     if (missing.length > 0) {
       setError(`Fill in: ${missing.map((m) => m.label).join(", ")}`);
       return;
@@ -615,6 +630,8 @@ export function MethodsMock() {
               afterParams={
                 selected.id === "report_module_state" ? (
                   <ReportModuleStateDashboardFields
+                    values={values}
+                    onValueChange={setParam}
                     dashboard={reportDashboard}
                     setDashboard={setReportDashboard}
                   />
@@ -679,9 +696,10 @@ function MethodPanel({
     [loading, onExecute],
   );
 
-  const lastParam = method.params[method.params.length - 1];
+  const visibleParams = method.params.filter((p) => !p.hidden);
+  const lastParam = visibleParams[visibleParams.length - 1];
   const lastFieldEnterTip =
-    method.params.length === 0
+    visibleParams.length === 0
       ? null
       : lastParam?.options?.length
         ? "Last field: Enter runs Execute when the dropdown is closed."
@@ -724,12 +742,12 @@ function MethodPanel({
             </button>
           ) : null}
         </div>
-        {method.params.length === 0 ? (
+        {visibleParams.length === 0 ? (
           <p className="modulr-text-muted mt-3 text-sm">No parameters for this method.</p>
         ) : (
           <div className="mt-4 space-y-4">
-            {method.params.map((p, idx) => {
-              const isLastField = idx === method.params.length - 1;
+            {visibleParams.map((p, idx) => {
+              const isLastField = idx === visibleParams.length - 1;
               return (
                 <div key={p.name}>
                   <label
