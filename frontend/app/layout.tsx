@@ -21,8 +21,10 @@ const quantico = Quantico({
 export const metadata: Metadata = {
   title: "Modulr — Core shell",
   description: "Modulr.Core shell: stage 1 UI for routing, settings, and theme.",
-  /** Static /favicon.ico from public/ avoids App Router icon pipeline decode rejections (Event). */
-  icons: { icon: "/favicon.ico" },
+  /** Same gold mark as `BrandMark` / `ModulrSymbol` (`public/modulr-logo.svg`). */
+  icons: {
+    icon: [{ url: "/modulr-logo.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({

@@ -64,7 +64,16 @@ _MODULE_STATE_PHASES: frozenset[str] = frozenset(
 )
 _MAX_MODULE_STATE_DETAIL_CHARS = 16_384
 
-_MODULE_STATE_DETAIL_SCHEMA_VERSION = 1
+_MODULE_STATE_DETAIL_SCHEMA_VERSION = 2
+_MODULE_STATE_DETAIL_AUX_LABEL_MAX_LEN = 40
+_HEALTH_ACTIVITY_24H_ALLOWED_KEYS: frozenset[str] = frozenset({
+    "granularity_hours",
+    "jobs_points",
+    "aux1_label",
+    "aux1_points",
+    "aux2_label",
+    "aux2_points",
+})
 _MODULE_STATE_DETAIL_METRIC_KEYS: tuple[str, ...] = (
     "total_users",
     "active_users",
@@ -245,15 +254,71 @@ def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
             )
 
 
-def _normalize_module_state_detail_json(detail_raw: str) -> str:
-    """Parse ``detail`` JSON, validate dashboard metrics schema v1.
+def _health_activity_nonneg_points(
+    h: dict[str, Any],
+    *,
+    base: str,
+    field: str,
+) -> list[float]:
+    pts = h.get(field)
+    if not isinstance(pts, list) or len(pts) != 24:
+        raise WireValidationError(
+            f"{base}.{field} must be a list of length 24",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    out: list[float] = []
+    for i, p in enumerate(pts):
+        if type(p) is bool or not isinstance(p, (int, float)):
+            raise WireValidationError(
+                f"{base}.{field}[{i}] must be a number",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        if isinstance(p, float) and not math.isfinite(p):
+            raise WireValidationError(
+                f"{base}.{field}[{i}] must be a finite number",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        fv = float(p)
+        if fv < 0:
+            raise WireValidationError(
+                f"{base}.{field}[{i}] must be non-negative",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        out.append(fv)
+    return out
 
-    Returns compact JSON text for storage.
+
+def _health_activity_aux_label(h: dict[str, Any], *, base: str, field: str) -> str:
+    v = h.get(field)
+    if not isinstance(v, str):
+        raise WireValidationError(
+            f"{base}.{field} must be a string",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    s = v.strip()
+    if not s:
+        raise WireValidationError(
+            f"{base}.{field} must be a non-empty string",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    if len(s) > _MODULE_STATE_DETAIL_AUX_LABEL_MAX_LEN:
+        mx = _MODULE_STATE_DETAIL_AUX_LABEL_MAX_LEN
+        raise WireValidationError(
+            f"{base}.{field} must be at most {mx} characters",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    return s
+
+
+def _normalize_module_state_detail_json(detail_raw: str) -> tuple[str, list[str]]:
+    """Parse ``detail`` JSON, validate dashboard metrics schema v2.
+
+    Returns compact JSON text for storage and any soft warnings (e.g. stripped keys).
     """
     s = detail_raw.strip()
     if not s:
         raise WireValidationError(
-            "payload.detail is required (JSON dashboard metrics, schema_version 1)",
+            "payload.detail is required (JSON dashboard metrics, schema_version 2)",
             code=ErrorCode.PAYLOAD_INVALID,
         )
     if len(s) > _MAX_MODULE_STATE_DETAIL_CHARS:
@@ -310,30 +375,54 @@ def _normalize_module_state_detail_json(detail_raw: str) -> str:
             "payload.detail.health_activity_24h must be an object",
             code=ErrorCode.PAYLOAD_INVALID,
         )
-    gh = ha.get("granularity_hours")
+    ha_warnings: list[str] = []
+    unknown_ha_keys = sorted(set(ha.keys()) - _HEALTH_ACTIVITY_24H_ALLOWED_KEYS)
+    for uk in unknown_ha_keys:
+        ha_warnings.append(
+            "Removed unsupported payload.detail.health_activity_24h "
+            f"field {uk!r}",
+        )
+    ha_clean = {k: ha[k] for k in ha if k in _HEALTH_ACTIVITY_24H_ALLOWED_KEYS}
+    hbase = "payload.detail.health_activity_24h"
+    gh = ha_clean.get("granularity_hours")
     if type(gh) is not int or gh != 1:
         raise WireValidationError(
-            "payload.detail.health_activity_24h.granularity_hours must be integer 1",
+            f"{hbase}.granularity_hours must be integer 1",
             code=ErrorCode.PAYLOAD_INVALID,
         )
-    points = ha.get("points")
-    if not isinstance(points, list) or len(points) != 24:
-        raise WireValidationError(
-            "payload.detail.health_activity_24h.points must be a list of length 24",
-            code=ErrorCode.PAYLOAD_INVALID,
-        )
-    for i, p in enumerate(points):
-        if isinstance(p, bool) or not isinstance(p, (int, float)):
-            raise WireValidationError(
-                f"payload.detail.health_activity_24h.points[{i}] must be a number",
-                code=ErrorCode.PAYLOAD_INVALID,
-            )
-        if isinstance(p, float) and not math.isfinite(p):
-            raise WireValidationError(
-                f"payload.detail.health_activity_24h.points[{i}] must be a "
-                "finite number",
-                code=ErrorCode.PAYLOAD_INVALID,
-            )
+    jobs_points = _health_activity_nonneg_points(
+        ha_clean,
+        base=hbase,
+        field="jobs_points",
+    )
+    aux1_label = _health_activity_aux_label(
+        ha_clean,
+        base=hbase,
+        field="aux1_label",
+    )
+    aux1_points = _health_activity_nonneg_points(
+        ha_clean,
+        base=hbase,
+        field="aux1_points",
+    )
+    aux2_label = _health_activity_aux_label(
+        ha_clean,
+        base=hbase,
+        field="aux2_label",
+    )
+    aux2_points = _health_activity_nonneg_points(
+        ha_clean,
+        base=hbase,
+        field="aux2_points",
+    )
+    root["health_activity_24h"] = {
+        "aux1_label": aux1_label,
+        "aux1_points": aux1_points,
+        "aux2_label": aux2_label,
+        "aux2_points": aux2_points,
+        "granularity_hours": 1,
+        "jobs_points": jobs_points,
+    }
     _validate_module_state_dashboard_cards(root)
     _validate_module_state_dashboard_pies(root)
     if "notes" in root and root["notes"] is not None:
@@ -349,7 +438,7 @@ def _normalize_module_state_detail_json(detail_raw: str) -> str:
             "characters after normalization",
             code=ErrorCode.PAYLOAD_INVALID,
         )
-    return normalized
+    return normalized, ha_warnings
 
 
 def _parse_submit_route_mode(p: dict[str, Any]) -> str:
@@ -1530,9 +1619,10 @@ def handle_report_module_state(
     Store the latest lifecycle snapshot for a registered module.
 
     Requires ``module_id``, ``state_phase`` (running, syncing, degraded,
-    maintenance), and ``detail``: a JSON object (``schema_version`` 1) with
+    maintenance), and ``detail``: a JSON object (``schema_version`` 2) with
     dashboard-oriented metrics (user/subscriber/validator/provider/job counts,
-    validator status percentages, 24 hourly health samples). The sender Ed25519
+    validator status percentages, 24 hourly jobs plus two labeled auxiliary
+    series). The sender Ed25519
     key must match the module's registered ``signing_public_key``.
 
     Args:
@@ -1560,7 +1650,7 @@ def handle_report_module_state(
             code=ErrorCode.INVALID_STATUS,
         )
     detail_in = require_str(p, "detail")
-    detail = _normalize_module_state_detail_json(detail_in)
+    detail, detail_warnings = _normalize_module_state_detail_json(detail_in)
 
     modules = ModulesRepository(conn)
     mod_row = modules.get_by_name(module_id)
@@ -1592,6 +1682,8 @@ def handle_report_module_state(
         "detail": detail,
         "reported_at": reported_at,
     }
+    if detail_warnings:
+        out_payload["warnings"] = detail_warnings
     return success_response_envelope(
         request_message_id=env["message_id"],
         operation_response="report_module_state_response",
