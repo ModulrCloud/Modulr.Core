@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
@@ -41,14 +42,26 @@ function delay(ms: number): Promise<void> {
 /** Max methods shown in the sidebar list before paginating (keeps the nav scannable). */
 const METHODS_PAGE_SIZE = 14;
 
+/** Hidden metric keys for `report_module_state` — not kept in `values` when another method is selected. */
+const REPORT_MODULE_STATE_HIDDEN_KEYS: ReadonlySet<string> = new Set(
+  METHOD_CATALOG.find((m) => m.id === "report_module_state")?.params
+    .filter((p) => p.hidden)
+    .map((p) => p.name) ?? [],
+);
+
 function buildInitialValuesForMethod(
   def: MethodDef,
   prev: Record<string, string>,
+  reportHiddenStash: Record<string, string>,
 ): Record<string, string> {
   const next: Record<string, string> = {};
   for (const p of def.params) {
     if (p.hidden) {
-      next[p.name] = prev[p.name] ?? "";
+      if (def.id === "report_module_state") {
+        next[p.name] = prev[p.name] ?? reportHiddenStash[p.name] ?? "";
+      } else {
+        next[p.name] = prev[p.name] ?? "";
+      }
     } else if (p.options?.length) {
       next[p.name] = p.options[0]!.value;
     } else {
@@ -113,6 +126,9 @@ export function MethodsMock() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
 
+  /** Survives method switches: `values` is rebuilt per method and drops hidden report keys. */
+  const reportHiddenStashRef = useRef<Record<string, string>>({});
+
   const methodsInCategory = useMemo(
     () => METHOD_CATALOG.filter((m) => m.category === categoryTab),
     [categoryTab],
@@ -159,16 +175,21 @@ export function MethodsMock() {
 
   useEffect(() => {
     if (!selected) return;
-    setValues((prev) => buildInitialValuesForMethod(selected, prev));
+    setValues((prev) => {
+      const next = buildInitialValuesForMethod(selected, prev, reportHiddenStashRef.current);
+      if (selected.id === "report_module_state") {
+        for (const p of selected.params) {
+          if (p.hidden) reportHiddenStashRef.current[p.name] = next[p.name] ?? "";
+        }
+      }
+      return next;
+    });
   }, [selected]);
 
-  useEffect(() => {
-    if (selected?.id === "report_module_state") {
-      setReportDashboard(defaultReportModuleDashboard());
-    }
-  }, [selected?.id]);
-
   const setParam = useCallback((name: string, v: string) => {
+    if (REPORT_MODULE_STATE_HIDDEN_KEYS.has(name)) {
+      reportHiddenStashRef.current[name] = v;
+    }
     setValues((prev) => ({ ...prev, [name]: v }));
   }, []);
 
@@ -178,7 +199,15 @@ export function MethodsMock() {
     setResult(null);
     const def = METHOD_CATALOG.find((m) => m.id === id);
     if (def) {
-      setValues((prev) => buildInitialValuesForMethod(def, prev));
+      setValues((prev) => {
+        const next = buildInitialValuesForMethod(def, prev, reportHiddenStashRef.current);
+        if (def.id === "report_module_state") {
+          for (const p of def.params) {
+            if (p.hidden) reportHiddenStashRef.current[p.name] = next[p.name] ?? "";
+          }
+        }
+        return next;
+      });
     } else {
       setValues({});
     }
@@ -443,7 +472,13 @@ export function MethodsMock() {
 
   const fillReportModuleStateMock = useCallback(() => {
     setReportDashboard(defaultReportModuleDashboard());
-    setValues((prev) => ({ ...prev, ...reportModuleStateMockFormPatch() }));
+    const patch = reportModuleStateMockFormPatch();
+    for (const [k, v] of Object.entries(patch)) {
+      if (REPORT_MODULE_STATE_HIDDEN_KEYS.has(k)) {
+        reportHiddenStashRef.current[k] = v;
+      }
+    }
+    setValues((prev) => ({ ...prev, ...patch }));
   }, []);
 
   return (
