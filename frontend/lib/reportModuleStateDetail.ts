@@ -1,11 +1,78 @@
 /**
  * `report_module_state` payload.detail — JSON schema v1: core metrics, 24h health,
- * dashboard cards (≤10), pies (≤4, ≤5 slices each).
+ * extra dashboard_cards (Core allows ≤10; UI uses 6 fixed metrics + up to 4 custom),
+ * pies (≤4, ≤5 slices each).
  */
 
 export const REPORT_MODULE_STATE_DETAIL_SCHEMA_VERSION = 1;
 
+/** Core accepts up to this many `dashboard_cards` entries. */
 export const MAX_DASHBOARD_CARDS = 10;
+/** Additional cards in Methods UI (cards 7–10) beyond the six standard metrics. */
+export const MAX_CUSTOM_DASHBOARD_CARDS = 4;
+export const FIXED_STANDARD_METRIC_CARD_COUNT = 6;
+
+export const FIXED_STANDARD_METRIC_CARDS: readonly {
+  valueKey: string;
+  title: string;
+  description: string;
+}[] = [
+  {
+    valueKey: "metric_total_users",
+    title: "Total users",
+    description: "User accounts or identities with any relationship to this module.",
+  },
+  {
+    valueKey: "metric_active_users",
+    title: "Active users",
+    description: "Users with meaningful activity in the current reporting window.",
+  },
+  {
+    valueKey: "metric_subscribers",
+    title: "Subscribers",
+    description: "Distinct identities subscribed to or entitled to this module’s services.",
+  },
+  {
+    valueKey: "metric_validators",
+    title: "Validators",
+    description: "Validators registered or observed for this module (same total as the status pie below).",
+  },
+  {
+    valueKey: "metric_providers",
+    title: "Providers",
+    description: "Independent service providers bound to this module.",
+  },
+  {
+    valueKey: "metric_active_jobs",
+    title: "Active jobs",
+    description: "In-flight work, connections, or jobs touching this module.",
+  },
+];
+
+export const VALIDATOR_STATUS_PIE_UI = {
+  title: "Validator status",
+  description:
+    "Share of validators that are active, passive (standby), or offline. Slice labels are fixed; percents must sum to 100. Total matches the Validators card above.",
+  slices: [
+    { label: "Active", pctKey: "val_pct_active" },
+    { label: "Passive", pctKey: "val_pct_passive" },
+    { label: "Offline", pctKey: "val_pct_offline" },
+  ],
+} as const;
+
+export const HEALTH_ACTIVITY_UI = {
+  title: "Health & activity (24h)",
+  description:
+    "One numeric sample per clock hour (24 comma-separated values). Rates, scores, or error budgets — Core stores the series as-is.",
+  valueKey: "health_activity_csv",
+} as const;
+
+export const NOTES_UI = {
+  title: "Notes",
+  description: "Optional human context; stored in JSON as detail.notes.",
+  valueKey: "detail_notes",
+} as const;
+
 export const MAX_DASHBOARD_PIES = 4;
 export const MAX_PIE_SLICES = 5;
 export const MAX_CARD_DESCRIPTION_CHARS = 280;
@@ -67,10 +134,17 @@ function buildDashboardCardsJson(
 ): { ok: true; cards: { title: string; value: number; description: string }[] } | { ok: false; error: string } {
   const filled = cards.filter((c) => c.title.trim().length > 0);
   if (filled.length === 0) {
-    return { ok: false, error: "Add at least one dashboard card (title, value, description)" };
+    return {
+      ok: false,
+      error:
+        "Add at least one additional dashboard card (cards 7–10): title, value, description",
+    };
   }
-  if (filled.length > MAX_DASHBOARD_CARDS) {
-    return { ok: false, error: `At most ${MAX_DASHBOARD_CARDS} cards allowed` };
+  if (filled.length > MAX_CUSTOM_DASHBOARD_CARDS) {
+    return {
+      ok: false,
+      error: `At most ${MAX_CUSTOM_DASHBOARD_CARDS} additional cards (cards 7–10)`,
+    };
   }
   const out: { title: string; value: number; description: string }[] = [];
   for (let i = 0; i < filled.length; i++) {
@@ -160,40 +234,21 @@ export function defaultReportModuleDashboard(): ReportModuleDashboardState {
   return {
     cards: [
       {
-        title: "Active jobs",
-        value: "847",
-        description: "In-flight work touching this module.",
-      },
-      {
-        title: "Validators online",
-        value: "142",
-        description: "Alive within the configured liveness window.",
-      },
-      {
-        title: "Providers subscribed",
-        value: "412",
-        description: "Distinct providers using this module’s services.",
+        title: "Spotlight metric",
+        value: "1",
+        description:
+          "First additional homepage card (slot 7). Edit title/value/description or add more up to four extras.",
       },
     ],
     pies: [
       {
         metric_name: "Users by role",
         total: "45120",
-        description: "User-type mix for the homepage donut.",
+        description: "User-type mix for the homepage donut (custom pie).",
         slices: [
           { label: "Clients", percent: "71" },
           { label: "Validator users", percent: "8" },
           { label: "Providers", percent: "21" },
-        ],
-      },
-      {
-        metric_name: "Validator health",
-        total: "156",
-        description: "Active vs passive vs offline validators.",
-        slices: [
-          { label: "Active", percent: "55" },
-          { label: "Passive", percent: "30" },
-          { label: "Offline", percent: "15" },
         ],
       },
     ],

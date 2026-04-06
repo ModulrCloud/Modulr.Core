@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import secrets
 import sqlite3
@@ -273,10 +274,12 @@ def _normalize_module_state_detail_json(detail_raw: str) -> str:
             "payload.detail JSON must be an object",
             code=ErrorCode.PAYLOAD_INVALID,
         )
-    if root.get("schema_version") != _MODULE_STATE_DETAIL_SCHEMA_VERSION:
+    # ``bool`` is a distinct type, but ``True == 1`` — reject booleans explicitly.
+    sv = root.get("schema_version")
+    if type(sv) is not int or sv != _MODULE_STATE_DETAIL_SCHEMA_VERSION:
         ver = _MODULE_STATE_DETAIL_SCHEMA_VERSION
         raise WireValidationError(
-            f"payload.detail.schema_version must be {ver}",
+            f"payload.detail.schema_version must be integer {ver}",
             code=ErrorCode.PAYLOAD_INVALID,
         )
     metrics = root.get("metrics")
@@ -308,9 +311,9 @@ def _normalize_module_state_detail_json(detail_raw: str) -> str:
             code=ErrorCode.PAYLOAD_INVALID,
         )
     gh = ha.get("granularity_hours")
-    if gh != 1:
+    if type(gh) is not int or gh != 1:
         raise WireValidationError(
-            "payload.detail.health_activity_24h.granularity_hours must be 1",
+            "payload.detail.health_activity_24h.granularity_hours must be integer 1",
             code=ErrorCode.PAYLOAD_INVALID,
         )
     points = ha.get("points")
@@ -325,9 +328,10 @@ def _normalize_module_state_detail_json(detail_raw: str) -> str:
                 f"payload.detail.health_activity_24h.points[{i}] must be a number",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
-        if isinstance(p, float) and p != p:
+        if isinstance(p, float) and not math.isfinite(p):
             raise WireValidationError(
-                f"payload.detail.health_activity_24h.points[{i}] must be a number",
+                f"payload.detail.health_activity_24h.points[{i}] must be a "
+                "finite number",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
     _validate_module_state_dashboard_cards(root)
