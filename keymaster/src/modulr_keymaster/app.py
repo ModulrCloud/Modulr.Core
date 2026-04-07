@@ -1,47 +1,85 @@
-"""FastAPI app: themed static UI for Keymaster (mock data until vault exists)."""
+"""FastAPI app: Keymaster loopback UI and encrypted vault."""
 
 from __future__ import annotations
 
+import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from modulr_keymaster.paths import vault_exists, vault_json_path
+from modulr_keymaster.profiles import empty_inner_payload, inner_payload_to_profiles
+from modulr_keymaster.sessions import SESSION_COOKIE, UnlockedVault, find_profile
+from modulr_keymaster.vault_crypto import (
+    MIN_PASSPHRASE_LENGTH,
+    VaultCryptoError,
+    decrypt_vault_payload,
+    encrypt_vault_payload,
+)
+from modulr_keymaster.vault_file import read_envelope, write_envelope
+
 _PKG_DIR = Path(__file__).resolve().parent
 
-MOCK_PROFILES: list[dict[str, str]] = [
-    {
-        "id": "personal",
-        "display_name": "Personal",
-        "public_key_hex": (
-            "3f8a2c1e9b0d4f7a6e5c8b1d2f0a3948"
-            "7e6d5c4b3a291807f6e5d4c3b2a1908f"
-        ),
-        "created_at": "2026-03-28T14:22:00Z",
-    },
-    {
-        "id": "organization",
-        "display_name": "Organization",
-        "public_key_hex": (
-            "a1b2c3d4e5f60718293a4b5c6d7e8f90"
-            "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
-        ),
-        "created_at": "2026-03-29T09:15:00Z",
-    },
-]
+
+def _ctx(request: Request, **extra: object) -> dict[str, object]:
+    out: dict[str, object] = {
+        "request": request,
+        "nav_section": "none",
+    }
+    out.update(extra)
+    return out
 
 
-def _profile_by_id(profile_id: str) -> dict[str, str] | None:
-    for p in MOCK_PROFILES:
-        if p["id"] == profile_id:
-            return p
-    return None
+def _session_vault(request: Request) -> UnlockedVault | None:
+    sid = request.cookies.get(SESSION_COOKIE)
+    if not sid:
+        return None
+    sessions: dict[str, UnlockedVault] = request.app.state.keymaster_sessions
+    return sessions.get(sid)
+
+
+def _bind_session(
+    response: RedirectResponse,
+    request: Request,
+    vault: UnlockedVault,
+) -> None:
+    sid = secrets.token_urlsafe(32)
+    sessions: dict[str, UnlockedVault] = request.app.state.keymaster_sessions
+    sessions[sid] = vault
+    response.set_cookie(
+        SESSION_COOKIE,
+        sid,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_session(response: RedirectResponse, request: Request) -> None:
+    sid = request.cookies.get(SESSION_COOKIE)
+    if sid:
+        request.app.state.keymaster_sessions.pop(sid, None)
+    response.delete_cookie(SESSION_COOKIE, path="/")
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Keymaster", version="0.1.0", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.keymaster_sessions = {}
+        yield
+
+    app = FastAPI(
+        title="Keymaster",
+        version="0.1.0",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
     templates = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
     app.mount(
         "/static",
@@ -49,65 +87,184 @@ def create_app() -> FastAPI:
         name="static",
     )
 
-    def ctx(request: Request, **extra: object) -> dict[str, object]:
-        out: dict[str, object] = {
-            "request": request,
-            "ui_preview": True,
-            "nav_section": "none",
-        }
-        out.update(extra)
-        return out
-
-    @app.get("/", response_class=RedirectResponse)
+    @app.get("/", response_class=RedirectResponse, response_model=None)
     async def root() -> RedirectResponse:
-        return RedirectResponse(url="/unlock", status_code=302)
+        if not vault_exists():
+            return RedirectResponse("/setup", status_code=302)
+        return RedirectResponse("/unlock", status_code=302)
 
-    @app.get("/unlock", response_class=HTMLResponse)
-    async def unlock(request: Request) -> HTMLResponse:
+    @app.get("/unlock", response_model=None)
+    async def unlock_get(request: Request) -> HTMLResponse | RedirectResponse:
+        if not vault_exists():
+            return RedirectResponse("/setup", status_code=302)
+        if _session_vault(request) is not None:
+            return RedirectResponse("/identities", status_code=302)
         return templates.TemplateResponse(
             request,
             "unlock.html",
-            ctx(request, page_title="Unlock vault", nav_section="unlock"),
+            _ctx(request, page_title="Unlock vault", nav_section="unlock"),
         )
 
+    @app.post("/unlock", response_model=None)
+    async def unlock_post(
+        request: Request,
+        passphrase: Annotated[str, Form()],
+    ) -> HTMLResponse:
+        if not vault_exists():
+            return RedirectResponse("/setup", status_code=303)
+        path = vault_json_path()
+        try:
+            envelope = read_envelope(path)
+            inner = decrypt_vault_payload(passphrase, envelope)
+            profiles = inner_payload_to_profiles(inner)
+        except (OSError, ValueError, VaultCryptoError):
+            return templates.TemplateResponse(
+                request,
+                "unlock.html",
+                _ctx(
+                    request,
+                    page_title="Unlock vault",
+                    nav_section="unlock",
+                    error="Incorrect passphrase, or the vault file is damaged.",
+                ),
+                status_code=401,
+            )
+        vault = UnlockedVault(profiles)
+        response = RedirectResponse("/identities", status_code=303)
+        _bind_session(response, request, vault)
+        return response
+
     @app.get("/setup", response_class=HTMLResponse)
-    async def setup(request: Request) -> HTMLResponse:
+    async def setup_get(request: Request) -> HTMLResponse:
+        if vault_exists():
+            return templates.TemplateResponse(
+                request,
+                "setup.html",
+                _ctx(
+                    request,
+                    page_title="Create vault",
+                    nav_section="setup",
+                    vault_already_exists=True,
+                ),
+            )
         return templates.TemplateResponse(
             request,
             "setup.html",
-            ctx(request, page_title="Create vault", nav_section="setup"),
+            _ctx(request, page_title="Create vault", nav_section="setup"),
         )
 
-    @app.get("/identities", response_class=HTMLResponse)
-    async def identities(request: Request) -> HTMLResponse:
+    @app.post("/setup", response_model=None)
+    async def setup_post(
+        request: Request,
+        pw1: Annotated[str, Form()],
+        pw2: Annotated[str, Form()],
+    ) -> HTMLResponse | RedirectResponse:
+        if vault_exists():
+            return templates.TemplateResponse(
+                request,
+                "setup.html",
+                _ctx(
+                    request,
+                    page_title="Create vault",
+                    nav_section="setup",
+                    vault_already_exists=True,
+                    error="A vault already exists on this machine. Unlock it instead.",
+                ),
+                status_code=400,
+            )
+        err: str | None = None
+        if pw1 != pw2:
+            err = "Passphrases do not match."
+        elif len(pw1) < MIN_PASSPHRASE_LENGTH:
+            err = f"Passphrase must be at least {MIN_PASSPHRASE_LENGTH} characters."
+
+        if err:
+            return templates.TemplateResponse(
+                request,
+                "setup.html",
+                _ctx(
+                    request,
+                    page_title="Create vault",
+                    nav_section="setup",
+                    error=err,
+                ),
+                status_code=400,
+            )
+
+        inner = empty_inner_payload()
+        envelope = encrypt_vault_payload(pw1, inner)
+        try:
+            write_envelope(vault_json_path(), envelope)
+        except OSError:
+            return templates.TemplateResponse(
+                request,
+                "setup.html",
+                _ctx(
+                    request,
+                    page_title="Create vault",
+                    nav_section="setup",
+                    error=(
+                        "Could not write the vault file. "
+                        "Check disk space and permissions."
+                    ),
+                ),
+                status_code=500,
+            )
+
+        profiles = inner_payload_to_profiles(inner)
+        vault = UnlockedVault(profiles)
+        response = RedirectResponse("/identities?created=1", status_code=303)
+        _bind_session(response, request, vault)
+        return response
+
+    @app.post("/lock", response_class=RedirectResponse)
+    async def lock_post(request: Request) -> RedirectResponse:
+        response = RedirectResponse("/unlock", status_code=303)
+        _clear_session(response, request)
+        return response
+
+    @app.get("/identities", response_model=None)
+    async def identities(request: Request) -> HTMLResponse | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=302)
+        rows = [p.to_public_dict() for p in vault.profiles]
+        created = request.query_params.get("created") == "1"
         return templates.TemplateResponse(
             request,
             "dashboard.html",
-            ctx(
+            _ctx(
                 request,
                 page_title="Identities",
-                profiles=MOCK_PROFILES,
+                profiles=rows,
                 nav_section="identities",
+                vault_created=created,
             ),
         )
 
-    @app.get("/identities/{profile_id}", response_class=HTMLResponse)
-    async def identity_detail(request: Request, profile_id: str) -> HTMLResponse:
-        profile = _profile_by_id(profile_id)
+    @app.get("/identities/{profile_id}", response_model=None)
+    async def identity_detail(
+        request: Request,
+        profile_id: str,
+    ) -> HTMLResponse | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=302)
+        profile = find_profile(vault, profile_id)
         if profile is None:
             return templates.TemplateResponse(
                 request,
                 "not_found.html",
-                ctx(request, page_title="Not found", nav_section="none"),
+                _ctx(request, page_title="Not found", nav_section="none"),
                 status_code=404,
             )
         return templates.TemplateResponse(
             request,
             "profile_detail.html",
-            ctx(
+            _ctx(
                 request,
-                page_title=profile["display_name"],
-                profile=profile,
+                page_title=profile.display_name,
+                profile=profile.to_public_dict(),
                 nav_section="detail",
             ),
         )

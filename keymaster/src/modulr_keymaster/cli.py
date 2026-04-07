@@ -7,8 +7,6 @@ import sys
 
 import uvicorn
 
-from modulr_keymaster.app import create_app
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Keymaster local web UI")
