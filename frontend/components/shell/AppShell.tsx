@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 href="/"
                 aria-label="Modulr.Core home"
                 aria-current={pathname === "/" ? "page" : undefined}
-                className="flex min-w-0 shrink-0 items-start gap-3 rounded-xl outline-offset-2 transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--modulr-accent)]"
+                className="flex min-w-0 shrink-0 items-center gap-3 rounded-xl outline-offset-2 transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--modulr-accent)]"
               >
                 <BrandMark />
                 <div className="hidden min-w-0 flex-col gap-0.5 pt-px sm:flex">
@@ -48,18 +48,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Modulr.Core
                   </span>
                   <span
-                    className="modulr-text-muted text-[10px] font-medium leading-tight tracking-wide"
+                    className="modulr-text-muted flex flex-col gap-0.5 text-[10px] font-medium leading-tight tracking-wide"
                     title={
                       coreVersion.kind === "error"
                         ? coreVersion.message
-                        : "Wire version from Core GET /version"
+                        : coreVersion.kind === "ok"
+                          ? [
+                              "Wire version from Core GET /version (not a POST /message method).",
+                              coreVersion.networkEnvironment
+                                ? `network_environment: ${coreVersion.networkEnvironment}`
+                                : null,
+                              coreVersion.genesisOperationsAllowed !== undefined
+                                ? `genesis_operations_allowed: ${coreVersion.genesisOperationsAllowed}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join("\n")
+                          : "Wire version from Core GET /version"
                     }
                   >
-                    {coreVersion.kind === "loading"
-                      ? "v…"
-                      : coreVersion.kind === "ok"
-                        ? `v${coreVersion.version}`
-                        : "unreachable"}
+                    {coreVersion.kind === "loading" ? (
+                      "v…"
+                    ) : coreVersion.kind === "ok" ? (
+                      <>
+                        <span>{`v${coreVersion.version}`}</span>
+                        {(coreVersion.networkDisplayName ||
+                          coreVersion.networkEnvironment) && (
+                          <span className="text-[9px] font-normal opacity-90">
+                            {coreVersion.networkDisplayName ??
+                              coreVersion.networkEnvironment}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      "unreachable"
+                    )}
                   </span>
                 </div>
               </Link>

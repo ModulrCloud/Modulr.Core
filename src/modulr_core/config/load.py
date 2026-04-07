@@ -15,7 +15,10 @@ from modulr_core.config.schema import (
     DEFAULT_MAX_EXPIRY_WINDOW_SECONDS,
     DEFAULT_MAX_HTTP_BODY_BYTES,
     DEFAULT_MAX_PAYLOAD_BYTES,
+    DEFAULT_NETWORK_ENVIRONMENT,
     DEFAULT_REPLAY_WINDOW_SECONDS,
+    NETWORK_NAME_MAX_LEN,
+    NetworkEnvironment,
     Settings,
 )
 from modulr_core.errors.exceptions import ConfigurationError, InvalidHexEncoding
@@ -80,6 +83,13 @@ def _settings_from_root(
         )
 
     dev_mode = _bool_opt(table, "dev_mode", DEFAULT_DEV_MODE, source)
+    network_environment = _network_environment_opt(table, source)
+    network_name = _network_name_opt(table, source)
+    if network_environment is NetworkEnvironment.PRODUCTION and dev_mode:
+        raise ConfigurationError(
+            f'network_environment "production" cannot be combined with dev_mode true '
+            f"({source})",
+        )
     keys = _bootstrap_public_keys(table.get("bootstrap_public_keys"), source, dev_mode)
 
     database_path = _path_opt(
@@ -142,6 +152,8 @@ def _settings_from_root(
         future_timestamp_skew_seconds=skew,
         replay_window_seconds=replay,
         dev_mode=dev_mode,
+        network_environment=network_environment,
+        network_name=network_name,
     )
 
 
@@ -189,6 +201,46 @@ def _bootstrap_public_keys(
             f"({source})",
         )
     return tuple(out)
+
+
+def _network_environment_opt(
+    table: dict[str, Any],
+    source: str,
+) -> NetworkEnvironment:
+    key = "network_environment"
+    if key not in table:
+        return DEFAULT_NETWORK_ENVIRONMENT
+    v = table[key]
+    if not isinstance(v, str) or not v.strip():
+        raise ConfigurationError(
+            f"network_environment must be a non-empty string ({source})",
+        )
+    raw = v.strip().lower()
+    try:
+        return NetworkEnvironment(raw)
+    except ValueError:
+        raise ConfigurationError(
+            f'network_environment must be "local", "testnet", or "production" '
+            f"({source})",
+        ) from None
+
+
+def _network_name_opt(table: dict[str, Any], source: str) -> str:
+    key = "network_name"
+    if key not in table:
+        return ""
+    v = table[key]
+    if not isinstance(v, str):
+        raise ConfigurationError(
+            f"network_name must be a string ({source})",
+        )
+    name = v.strip()
+    if len(name) > NETWORK_NAME_MAX_LEN:
+        raise ConfigurationError(
+            f"network_name must be at most {NETWORK_NAME_MAX_LEN} characters "
+            f"({source})",
+        )
+    return name
 
 
 def _bool_opt(table: dict[str, Any], key: str, default: bool, source: str) -> bool:

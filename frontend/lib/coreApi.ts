@@ -2,9 +2,15 @@ import { buildSignedMessageBody } from "@/lib/modulrWire/signCoreMessage";
 
 import { primaryCoreBaseUrl } from "./coreBaseUrl";
 
+/** Parsed body of Core **GET /version** (not a `POST /message` operation). */
 export type CoreVersionJson = {
   target_module: string;
   version: string;
+  /** Present on current Core: `local` | `testnet` | `production`. */
+  network_environment?: string;
+  /** Resolved display label (custom `network_name` in TOML or tier default). */
+  network_name?: string;
+  genesis_operations_allowed?: boolean;
 };
 
 export async function fetchCoreVersion(baseUrl: string): Promise<CoreVersionJson> {
@@ -30,7 +36,20 @@ export async function fetchCoreVersion(baseUrl: string): Promise<CoreVersionJson
   if (typeof version !== "string" || typeof target_module !== "string") {
     throw new Error("Invalid /version response shape");
   }
-  return { version, target_module };
+  const network_environment =
+    typeof o.network_environment === "string" ? o.network_environment : undefined;
+  const network_name = typeof o.network_name === "string" ? o.network_name : undefined;
+  const genesis_operations_allowed =
+    typeof o.genesis_operations_allowed === "boolean"
+      ? o.genesis_operations_allowed
+      : undefined;
+  return {
+    version,
+    target_module,
+    network_environment,
+    network_name,
+    genesis_operations_allowed,
+  };
 }
 
 function errFromEnvelope(data: Record<string, unknown>, status: number): string {

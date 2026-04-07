@@ -9,7 +9,13 @@ import { formatClientError } from "@/lib/formatClientError";
 
 export type CoreVersionState =
   | { kind: "loading" }
-  | { kind: "ok"; version: string }
+  | {
+      kind: "ok";
+      version: string;
+      networkEnvironment?: string;
+      networkDisplayName?: string;
+      genesisOperationsAllowed?: boolean;
+    }
   | { kind: "error"; message: string };
 
 export function useCoreVersion(): CoreVersionState {
@@ -28,7 +34,15 @@ export function useCoreVersion(): CoreVersionState {
     setState({ kind: "loading" });
     fetchCoreVersion(base)
       .then((v) => {
-        if (!cancelled) setState({ kind: "ok", version: v.version });
+        if (!cancelled) {
+          setState({
+            kind: "ok",
+            version: v.version,
+            networkEnvironment: v.network_environment,
+            networkDisplayName: v.network_name,
+            genesisOperationsAllowed: v.genesis_operations_allowed,
+          });
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) {

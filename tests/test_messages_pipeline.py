@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from modulr_core import MODULE_VERSION, ErrorCode, WireValidationError
-from modulr_core.config.schema import Settings
+from modulr_core.config.schema import NetworkEnvironment, Settings
 from modulr_core.messages import ValidatedInbound, validate_inbound_request
 from modulr_core.persistence import apply_migrations, connect_memory
 from modulr_core.validation import envelope_signing_bytes, payload_hash
@@ -29,6 +29,8 @@ def _settings(**overrides: Any) -> Settings:
         future_timestamp_skew_seconds=300,
         replay_window_seconds=86_400,
         dev_mode=True,
+        network_environment=NetworkEnvironment.LOCAL,
+        network_name="",
     )
     return replace(base, **overrides)
 

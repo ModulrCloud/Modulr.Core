@@ -15,6 +15,8 @@ from modulr_core.config import (
     DEFAULT_MAX_HTTP_BODY_BYTES,
     DEFAULT_MAX_PAYLOAD_BYTES,
     DEFAULT_REPLAY_WINDOW_SECONDS,
+    NETWORK_NAME_MAX_LEN,
+    NetworkEnvironment,
     Settings,
     load_settings,
     load_settings_from_bytes,
@@ -44,6 +46,10 @@ bootstrap_public_keys = ["{k}"]
     assert s.future_timestamp_skew_seconds == DEFAULT_FUTURE_TIMESTAMP_SKEW_SECONDS
     assert s.replay_window_seconds == DEFAULT_REPLAY_WINDOW_SECONDS
     assert s.dev_mode is DEFAULT_DEV_MODE
+    assert s.network_environment is NetworkEnvironment.PRODUCTION
+    assert s.network_name == ""
+    assert s.genesis_operations_allowed() is False
+    assert s.resolved_network_display_name() == "Modulr (production)"
 
 
 def test_full_config_overrides() -> None:
@@ -59,6 +65,8 @@ max_expiry_window_seconds = 3600
 future_timestamp_skew_seconds = 60
 replay_window_seconds = 120
 dev_mode = true
+network_environment = "testnet"
+network_name = "Holesky-style"
 """,
     )
     assert s.database_path == Path("custom/db.sqlite")
@@ -68,6 +76,10 @@ dev_mode = true
     assert s.future_timestamp_skew_seconds == 60
     assert s.replay_window_seconds == 120
     assert s.dev_mode is True
+    assert s.network_environment is NetworkEnvironment.TESTNET
+    assert s.network_name == "Holesky-style"
+    assert s.genesis_operations_allowed() is True
+    assert s.resolved_network_display_name() == "Holesky-style"
 
 
 def test_dev_mode_allows_empty_bootstrap() -> None:
@@ -75,11 +87,13 @@ def test_dev_mode_allows_empty_bootstrap() -> None:
         """
 [modulr_core]
 dev_mode = true
+network_environment = "local"
 bootstrap_public_keys = []
 """,
     )
     assert s.bootstrap_public_keys == ()
     assert s.dev_mode is True
+    assert s.network_environment is NetworkEnvironment.LOCAL
 
 
 def test_missing_modulr_core_table() -> None:
@@ -211,3 +225,40 @@ database_path = "state/db.sqlite"
     )
     s = load_settings(p)
     assert s.database_path == (cfg_dir / "state" / "db.sqlite").resolve()
+
+
+def test_network_environment_invalid() -> None:
+    k = _valid_hex_pubkey()
+    with pytest.raises(ConfigurationError, match="network_environment must be"):
+        load_settings_from_str(
+            f"""
+[modulr_core]
+bootstrap_public_keys = ["{k}"]
+network_environment = "mainnet"
+""",
+        )
+
+
+def test_network_name_too_long() -> None:
+    k = _valid_hex_pubkey()
+    with pytest.raises(ConfigurationError, match="network_name must be at most"):
+        load_settings_from_str(
+            f"""
+[modulr_core]
+bootstrap_public_keys = ["{k}"]
+network_name = "{'x' * (NETWORK_NAME_MAX_LEN + 1)}"
+""",
+        )
+
+
+def test_production_with_dev_mode_rejected() -> None:
+    k = _valid_hex_pubkey()
+    with pytest.raises(ConfigurationError, match="cannot be combined"):
+        load_settings_from_str(
+            f"""
+[modulr_core]
+dev_mode = true
+network_environment = "production"
+bootstrap_public_keys = ["{k}"]
+""",
+        )
