@@ -1833,6 +1833,46 @@ def test_report_module_state_rejects_negative_jobs_point() -> None:
     assert ei.value.code is ErrorCode.PAYLOAD_INVALID
 
 
+def test_report_module_state_rejects_health_point_int_overflow_to_float() -> None:
+    """Huge JSON integers must not become float(OverflowError) → 500."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    reg = make_validated_inbound(
+        pk,
+        "register_module",
+        {
+            "module_name": "modulr.storage",
+            "module_version": MODULE_VERSION,
+            "route": {},
+            "signing_public_key": sender_pub.hex(),
+        },
+        "rms-of1",
+    )
+    dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    bad = json.loads(_valid_report_module_state_detail())
+    jp = list(bad["health_activity_24h"]["jobs_points"])
+    jp[0] = 10**400
+    bad["health_activity_24h"] = {**bad["health_activity_24h"], "jobs_points": jp}
+    detail = json.dumps(bad, separators=(",", ":"), sort_keys=True)
+    req = make_validated_inbound(
+        pk,
+        "report_module_state",
+        {
+            "module_id": "modulr.storage",
+            "state_phase": "running",
+            "detail": detail,
+        },
+        "rms-of2",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 2.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
 def test_report_module_state_strips_unknown_health_keys_with_warning() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

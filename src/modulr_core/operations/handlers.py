@@ -278,7 +278,13 @@ def _health_activity_nonneg_points(
                 f"{base}.{field}[{i}] must be a finite number",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
-        fv = float(p)
+        try:
+            fv = float(p)
+        except (OverflowError, ValueError):
+            raise WireValidationError(
+                f"{base}.{field}[{i}] must be a representable finite number",
+                code=ErrorCode.PAYLOAD_INVALID,
+            ) from None
         if fv < 0:
             raise WireValidationError(
                 f"{base}.{field}[{i}] must be non-negative",
