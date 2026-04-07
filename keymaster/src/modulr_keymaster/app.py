@@ -18,6 +18,7 @@ from modulr_keymaster.profiles import (
     inner_payload_to_profiles,
     new_profile,
     profiles_to_inner_payload,
+    sign_challenge_utf8,
 )
 from modulr_keymaster.sessions import (
     SESSION_COOKIE,
@@ -362,6 +363,83 @@ def create_app() -> FastAPI:
 
         replace_session_vault(sessions, sid, UnlockedVault(profiles))
         return RedirectResponse(f"/identities/{added.id}", status_code=303)
+
+    @app.get("/identities/{profile_id}/sign", response_model=None)
+    async def identity_sign_get(
+        request: Request,
+        profile_id: str,
+    ) -> HTMLResponse | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=302)
+        profile = find_profile(vault, profile_id)
+        if profile is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+        return templates.TemplateResponse(
+            request,
+            "profile_sign.html",
+            _ctx(
+                request,
+                page_title=f"Sign — {profile.display_name}",
+                profile=profile.to_public_dict(),
+                nav_section="sign",
+                signature_hex=None,
+                challenge_value="",
+                error=None,
+            ),
+        )
+
+    @app.post("/identities/{profile_id}/sign", response_model=None)
+    async def identity_sign_post(
+        request: Request,
+        profile_id: str,
+        challenge: str = Form(""),
+    ) -> HTMLResponse | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=303)
+        profile = find_profile(vault, profile_id)
+        if profile is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+
+        err: str | None = None
+        sig_hex: str | None = None
+        if challenge == "":
+            err = (
+                "Paste the challenge text Core (or your checklist) gave you, "
+                "then sign."
+            )
+        else:
+            try:
+                sig = sign_challenge_utf8(profile.private_key, challenge)
+                sig_hex = sig.hex()
+            except ValueError as e:
+                err = str(e)
+
+        return templates.TemplateResponse(
+            request,
+            "profile_sign.html",
+            _ctx(
+                request,
+                page_title=f"Sign — {profile.display_name}",
+                profile=profile.to_public_dict(),
+                nav_section="sign",
+                signature_hex=sig_hex,
+                challenge_value=challenge,
+                error=err,
+            ),
+            status_code=400 if err else 200,
+        )
 
     @app.get("/identities/{profile_id}", response_model=None)
     async def identity_detail(

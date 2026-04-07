@@ -49,5 +49,6 @@ pytest
 | `/identities` | GET | Dashboard (requires session) |
 | `/identities/new` | GET/POST | Add Ed25519 profile (session + vault passphrase to re-encrypt disk) |
 | `/identities/{id}` | GET | Profile + public key (requires session) |
+| `/identities/{id}/sign` | GET/POST | Paste genesis/admin challenge text; sign **UTF-8 bytes** with Ed25519; show signature hex (requires session) |
 
 Static assets: `src/modulr_keymaster/static/`; templates: `templates/`.
