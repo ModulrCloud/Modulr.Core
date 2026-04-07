@@ -58,7 +58,7 @@
               >
               <a
                 href="/identities"
-                class="{% if nav_section == 'identities' or nav_section == 'detail' or nav_section == 'new' %}km-nav--active{% endif %}"
+                class="{% if nav_section == 'identities' or nav_section == 'detail' or nav_section == 'new' or nav_section == 'sign' %}km-nav--active{% endif %}"
                 {% if nav_section == 'identities' %}aria-current="page"{% endif %}
                 >Identities</a
               >
@@ -106,6 +106,14 @@
               </svg>
             </button>
           </div>
+        </div>
+        <div class="km-header-note-wrap">
+          <p class="km-genesis-note km-text-muted" role="note">
+            Genesis tracking: “Sign challenge” signs
+            <strong class="km-text">UTF-8</strong> bytes of pasted text until Core defines the canonical
+            challenge bytes. See
+            <code class="km-text">docs/identity_encryption_and_org_policy.md</code> section 1.
+          </p>
         </div>
       </header>
 

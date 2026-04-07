@@ -91,12 +91,15 @@ def replace_session_vault(
     sid: str | None,
     vault: UnlockedVault,
 ) -> bool:
-    """Swap in-memory profiles after a disk write; returns False if sid missing."""
-    if not sid:
+    """After a disk write: every active session shares the same ``vault`` object.
+
+    Only ``sid`` gets :meth:`SessionRecord.touch` so other tabs keep their idle timers
+    unless they make their own request.
+    """
+    if not sessions:
         return False
-    rec = sessions.get(sid)
-    if rec is None:
-        return False
-    rec.vault = vault
-    rec.touch()
-    return True
+    for loop_sid, rec in sessions.items():
+        rec.vault = vault
+        if sid is not None and loop_sid == sid:
+            rec.touch()
+    return sid is not None and sid in sessions

@@ -13,6 +13,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from modulr_keymaster.vault_crypto import VaultCryptoError
 
+# Max UTF-8 payload size for “sign challenge” (DoS guard on loopback).
+MAX_SIGN_MESSAGE_UTF8_BYTES = 64 * 1024
+
 
 @dataclass
 class ProfileSecrets:
@@ -110,6 +113,16 @@ def empty_inner_payload() -> dict[str, Any]:
 
 
 DISPLAY_NAME_MAX_LEN = 80
+
+
+def sign_challenge_utf8(private_key: Ed25519PrivateKey, text: str) -> bytes:
+    """Sign UTF-8 bytes of ``text`` (genesis / admin challenges, interim rule)."""
+    raw = text.encode("utf-8")
+    if len(raw) > MAX_SIGN_MESSAGE_UTF8_BYTES:
+        raise ValueError(
+            f"message exceeds {MAX_SIGN_MESSAGE_UTF8_BYTES} bytes when UTF-8 encoded",
+        )
+    return private_key.sign(raw)
 
 
 def new_profile(display_name: str) -> ProfileSecrets:

@@ -72,6 +72,34 @@ html[data-theme="light"] .km-bg-base {
   gap: 1rem;
 }
 
+@media (min-width: 640px) {
+  .km-header-inner {
+    flex-wrap: nowrap;
+  }
+}
+
+.km-header-note-wrap {
+  margin: 0.5rem auto 0;
+  max-width: 72rem;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .km-header-note-wrap {
+    padding: 0 2rem;
+  }
+}
+
+.km-genesis-note {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--modulr-glass-border) 80%, transparent);
+  background-color: color-mix(in srgb, var(--modulr-glass-fill) 92%, transparent);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .km-brand-row {
   display: flex;
   min-width: 0;
@@ -323,6 +351,13 @@ html[data-theme="light"] .km-bg-base {
   outline: none;
   border-color: color-mix(in srgb, var(--modulr-accent) 45%, var(--modulr-glass-border));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--modulr-accent) 25%, transparent);
+}
+
+textarea.km-input.km-textarea {
+  min-height: 10rem;
+  resize: vertical;
+  line-height: 1.45;
+  font-family: inherit;
 }
 
 .km-actions {
