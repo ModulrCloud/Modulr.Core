@@ -10,6 +10,7 @@ import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -126,11 +127,15 @@ def create_app(
         )
 
     @app.get("/version")
-    async def get_version() -> dict[str, str]:
+    async def get_version() -> dict[str, Any]:
         """Read-only metadata for connectivity checks (no signed envelope)."""
+        s = app.state.settings
         return {
             "target_module": TARGET_MODULE_CORE,
             "version": MODULE_VERSION,
+            "network_environment": s.network_environment.value,
+            "network_name": s.resolved_network_display_name(),
+            "genesis_operations_allowed": s.genesis_operations_allowed(),
         }
 
     @app.post("/message")

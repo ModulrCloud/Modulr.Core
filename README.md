@@ -249,7 +249,7 @@ Defaults: **`127.0.0.1:8000`**. Override with `--host` / `--port`. If you see **
 
 A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE_CONFIG`** to a TOML path. If the port is already taken, the CLI exits with a short error before starting uvicorn.
 
-**Read-only:** **`GET /version`** returns JSON `target_module` and `version` (for UI connectivity). In **`dev_mode`**, CORS allows the local customer UI origins unless **`MODULR_CORE_CORS_ORIGINS`** is set (comma-separated list).
+**Read-only:** **`GET /version`** returns JSON `target_module`, `version`, **`network_environment`** (`local` | `testnet` | `production`, default `production` if omitted in config), **`network_name`** (operator display string — set `network_name` in TOML or get a default like `Modulr (local)`), and **`genesis_operations_allowed`** (boolean; `true` only on `local` / `testnet`). In **`dev_mode`**, CORS allows the local customer UI origins unless **`MODULR_CORE_CORS_ORIGINS`** is set (comma-separated list). **`network_environment = "production"`** cannot be combined with **`dev_mode = true`** (configuration is rejected at startup).
 
 ### Customer web UI (stage 1)
 

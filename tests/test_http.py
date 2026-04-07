@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
 from modulr_core import MODULE_VERSION, ErrorCode, SuccessCode
-from modulr_core.config.schema import Settings
+from modulr_core.config.schema import NetworkEnvironment, Settings
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.http import create_app, resolve_config_path
 from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
@@ -36,6 +36,8 @@ def _settings(**overrides: Any) -> Settings:
         future_timestamp_skew_seconds=300,
         replay_window_seconds=86_400,
         dev_mode=True,
+        network_environment=NetworkEnvironment.LOCAL,
+        network_name="",
     )
     return replace(base, **overrides)
 
@@ -293,7 +295,10 @@ def test_playground_not_mounted_when_not_dev_mode() -> None:
 
 def test_get_version() -> None:
     app = create_app(
-        settings=_settings(),
+        settings=_settings(
+            network_environment=NetworkEnvironment.TESTNET,
+            network_name="Modulr Test",
+        ),
         conn=_conn(),
         clock=lambda: 1_700_000_010.0,
     )
@@ -303,6 +308,31 @@ def test_get_version() -> None:
     data = r.json()
     assert data["target_module"] == "modulr.core"
     assert data["version"] == MODULE_VERSION
+    assert data["network_environment"] == "testnet"
+    assert data["network_name"] == "Modulr Test"
+    assert data["genesis_operations_allowed"] is True
+
+
+def test_get_version_production_no_genesis() -> None:
+    pk = Ed25519PrivateKey.generate()
+    pk_hex = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    app = create_app(
+        settings=_settings(
+            dev_mode=False,
+            network_environment=NetworkEnvironment.PRODUCTION,
+            bootstrap_public_keys=(pk_hex,),
+        ),
+        conn=_conn(),
+        clock=lambda: 1_700_000_010.0,
+    )
+    client = TestClient(app)
+    data = client.get("/version").json()
+    assert data["network_environment"] == "production"
+    assert data["genesis_operations_allowed"] is False
+    assert data["network_name"] == "Modulr (production)"
 
 
 def test_post_message_get_protocol_version() -> None:

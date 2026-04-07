@@ -19,7 +19,7 @@ from modulr_core import (
     SuccessCode,
     WireValidationError,
 )
-from modulr_core.config.schema import Settings
+from modulr_core.config.schema import NetworkEnvironment, Settings
 from modulr_core.messages.constants import CORE_OPERATIONS, PROTOCOL_METHOD_OPERATIONS
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.messages.wire_method_catalog import (
@@ -45,6 +45,8 @@ def _settings(**overrides: Any) -> Settings:
         future_timestamp_skew_seconds=300,
         replay_window_seconds=86_400,
         dev_mode=True,
+        network_environment=NetworkEnvironment.LOCAL,
+        network_name="",
     )
     return replace(base, **overrides)
 
