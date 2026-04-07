@@ -2,23 +2,56 @@
 {% block content %}
   <article class="modulr-glass-surface km-panel">
     <h1 class="km-display km-text">Create vault</h1>
-    <p class="km-lead km-text-muted">
-      First-run setup: choose a strong passphrase. Keys never leave this machine. This screen is
-      visual only until the vault module exists.
-    </p>
-    <form method="get" action="/identities" onsubmit="return false;">
-      <div class="km-form-group">
-        <label class="km-text" for="pw1">Passphrase</label>
-        <input class="km-input" id="pw1" name="pw1" type="password" autocomplete="new-password" />
-      </div>
-      <div class="km-form-group">
-        <label class="km-text" for="pw2">Confirm passphrase</label>
-        <input class="km-input" id="pw2" name="pw2" type="password" autocomplete="new-password" />
-      </div>
+    {% if vault_already_exists %}
+      {% if error %}
+        <p class="km-form-error" role="alert">{{ error }}</p>
+      {% endif %}
+      <p class="km-lead km-text-muted">
+        A vault file already exists on this computer (<code class="km-text">vault.json</code> under your
+        Modulr folder). Unlock it to use your identities.
+      </p>
       <div class="km-actions">
-        <button type="button" class="km-btn km-btn--primary" disabled aria-disabled="true">Create vault</button>
-        <a class="km-btn km-btn--ghost" href="/unlock">Already have a vault</a>
+        <a class="km-btn km-btn--primary" href="/unlock">Unlock vault</a>
       </div>
-    </form>
+    {% else %}
+      <p class="km-lead km-text-muted">
+        Choose a strong passphrase. It encrypts <code class="km-text">vault.json</code> on disk; keys
+        never leave this machine. After you submit, the vault is created and you are signed in for this
+        browser session.
+      </p>
+      {% if error %}
+        <p class="km-form-error" role="alert">{{ error }}</p>
+      {% endif %}
+      <form method="post" action="/setup">
+        <div class="km-form-group">
+          <label class="km-text" for="pw1">Passphrase</label>
+          <input
+            class="km-input"
+            id="pw1"
+            name="pw1"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="12"
+          />
+        </div>
+        <div class="km-form-group">
+          <label class="km-text" for="pw2">Confirm passphrase</label>
+          <input
+            class="km-input"
+            id="pw2"
+            name="pw2"
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="12"
+          />
+        </div>
+        <div class="km-actions">
+          <button type="submit" class="km-btn km-btn--primary">Create vault</button>
+          <a class="km-btn km-btn--ghost" href="/unlock">Already have a vault</a>
+        </div>
+      </form>
+    {% endif %}
   </article>
 {% endblock %}

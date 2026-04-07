@@ -432,6 +432,28 @@ html[data-theme="light"] .km-bg-base {
   line-height: 1.5;
 }
 
+.km-form-error {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, #f87171 55%, var(--modulr-glass-border));
+  background: color-mix(in srgb, #f87171 12%, var(--modulr-glass-panel-fill));
+  color: var(--modulr-text);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.km-banner-success {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--modulr-accent) 45%, var(--modulr-glass-border));
+  background: color-mix(in srgb, var(--modulr-accent) 14%, var(--modulr-glass-panel-fill));
+  color: var(--modulr-text);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
 .km-skip-row {
   margin-top: 1rem;
   font-size: 0.8125rem;

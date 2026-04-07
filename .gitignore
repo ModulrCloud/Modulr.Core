@@ -18,6 +18,11 @@ build/
 # Local SQLite (modulr-core default database_path)
 data/
 
+# Keymaster — local vault (encrypted blobs still belong only on disk; keeps clones clean)
+keymaster_data/
+keymaster/keymaster_data/
+.modulr/keymaster/
+
 # Testing / tools
 .pytest_cache/
 .ruff_cache/

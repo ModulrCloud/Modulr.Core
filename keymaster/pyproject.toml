@@ -10,11 +10,31 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "BSL-1.1" }
 authors = [{ name = "Modulr" }]
+
+# Runtime dependencies — install only from PyPI (or your own index) after verifying the project page.
+# Check: https://pypi.org/project/<name>/ (maintainer, homepage, release history). Pin upgrades deliberately.
+#
+# Vault / crypto (added for encrypted vault.json):
+#   cryptography — PyCA; Ed25519 + AES-GCM. Same stack as Modulr.Core (root pyproject). Repo: github.com/pyca/cryptography
+#   argon2-cffi — Hynek Schlawack; Argon2id KDF for passphrase → key. Repo: github.com/hynek/argon2-cffi
+#
+# Web / forms:
+#   python-multipart — Andrew Dunham; parses multipart form bodies (POST from our HTML forms). Repo: github.com/Kludex/python-multipart
+#   fastapi — Sebastián Ramírez; ASGI framework. Repo: github.com/fastapi/fastapi
+#   jinja2 — Pallets; server-side HTML templates. Repo: github.com/pallets/jinja
+#   uvicorn — Encode; ASGI server. Repo: github.com/Kludex/uvicorn
 dependencies = [
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
     "fastapi>=0.115.0",
     "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.30.0",
 ]
+
+# Dev-only: pytest (tests), httpx (FastAPI TestClient). PyPI: pytest, httpx.
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27.0"]
 
 [project.scripts]
 modulr-keymaster = "modulr_keymaster.cli:main"
@@ -25,6 +45,10 @@ packages = ["src/modulr_keymaster"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/modulr_keymaster/static" = "modulr_keymaster/static"
 "src/modulr_keymaster/templates" = "modulr_keymaster/templates"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py311"
