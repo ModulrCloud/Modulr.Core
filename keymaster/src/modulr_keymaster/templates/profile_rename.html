@@ -1,17 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
   <article class="modulr-glass-surface km-panel">
-    <h1 class="km-display km-text">New identity</h1>
+    <h1 class="km-display km-text">Rename identity</h1>
     <p class="km-lead km-text-muted">
-      Creates a new Ed25519 key in this vault. Use the <strong class="km-text">same passphrase</strong> you
-      use to unlock the vault (not a new password) — we need it to re-encrypt
-      <code class="km-text">vault.json</code> on disk. Suggested names: <strong class="km-text">personal</strong>,
-      <strong class="km-text">organization</strong>.
+      Updates the display name for <strong class="km-text">{{ profile.display_name }}</strong>. Enter your
+      <strong class="km-text">vault passphrase</strong> so <code class="km-text">vault.json</code> can be
+      re-encrypted on disk (same flow as adding an identity).
     </p>
     {% if error %}
       <p class="km-form-error" role="alert">{{ error }}</p>
     {% endif %}
-    <form method="post" action="/identities/new">
+    <form method="post" action="/identities/{{ profile.id }}/rename">
       <div class="km-form-group">
         <label class="km-text" for="display_name">Display name</label>
         <input
@@ -22,8 +21,9 @@
           autocomplete="off"
           maxlength="80"
           required
+          value="{{ form_display_name }}"
           list="km-suggested-names"
-          placeholder="personal, organization, or your own label"
+          placeholder="e.g. personal or organization"
         />
         <datalist id="km-suggested-names">
           <option value="personal"></option>
@@ -31,7 +31,7 @@
         </datalist>
       </div>
       <div class="km-form-group">
-        <label class="km-text" for="passphrase">Vault passphrase (same as unlock)</label>
+        <label class="km-text" for="passphrase">Vault passphrase</label>
         <input
           class="km-input"
           id="passphrase"
@@ -42,8 +42,8 @@
         />
       </div>
       <div class="km-actions">
-        <button type="submit" class="km-btn km-btn--primary">Generate &amp; save</button>
-        <a class="km-btn km-btn--ghost" href="/identities">Cancel</a>
+        <button type="submit" class="km-btn km-btn--primary">Save name</button>
+        <a class="km-btn km-btn--ghost" href="/identities/{{ profile.id }}">Cancel</a>
       </div>
     </form>
   </article>
