@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
+import json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from modulr_keymaster.paths import vault_exists, vault_json_path
 from modulr_keymaster.profiles import (
-    DISPLAY_NAME_MAX_LEN,
     empty_inner_payload,
     inner_payload_to_profiles,
     new_profile,
     profiles_to_inner_payload,
+    rename_profile_in_list,
     sign_challenge_utf8,
+    validate_display_name,
 )
 from modulr_keymaster.sessions import (
     SESSION_COOKIE,
@@ -281,8 +284,9 @@ def create_app() -> FastAPI:
         if resolve_unlocked_vault(sessions, sid) is None:
             return RedirectResponse("/unlock", status_code=303)
 
-        name = (display_name or "").strip()
-        if not name:
+        try:
+            name = validate_display_name(display_name)
+        except ValueError as e:
             return templates.TemplateResponse(
                 request,
                 "profile_new.html",
@@ -290,22 +294,7 @@ def create_app() -> FastAPI:
                     request,
                     page_title="New identity",
                     nav_section="new",
-                    error="Enter a display name.",
-                ),
-                status_code=400,
-            )
-        if len(name) > DISPLAY_NAME_MAX_LEN:
-            return templates.TemplateResponse(
-                request,
-                "profile_new.html",
-                _ctx(
-                    request,
-                    page_title="New identity",
-                    nav_section="new",
-                    error=(
-                        "Display name must be at most "
-                        f"{DISPLAY_NAME_MAX_LEN} characters."
-                    ),
+                    error=str(e),
                 ),
                 status_code=400,
             )
@@ -439,6 +428,163 @@ def create_app() -> FastAPI:
                 error=err,
             ),
             status_code=400 if err else 200,
+        )
+
+    def _safe_export_pub_filename(display_name: str, profile_id: str) -> str:
+        slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", (display_name or "").strip())
+        slug = slug.strip("._-")[:48] or profile_id.split("-", 1)[0]
+        return f"{slug}-ed25519.pub.json"
+
+    @app.get("/identities/{profile_id}/rename", response_model=None)
+    async def identity_rename_get(
+        request: Request,
+        profile_id: str,
+    ) -> HTMLResponse | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=302)
+        profile = find_profile(vault, profile_id)
+        if profile is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+        return templates.TemplateResponse(
+            request,
+            "profile_rename.html",
+            _ctx(
+                request,
+                page_title=f"Rename — {profile.display_name}",
+                profile=profile.to_public_dict(),
+                nav_section="rename",
+                error=None,
+                form_display_name=profile.display_name,
+            ),
+        )
+
+    @app.post("/identities/{profile_id}/rename", response_model=None)
+    async def identity_rename_post(
+        request: Request,
+        profile_id: str,
+        display_name: Annotated[str, Form()],
+        passphrase: Annotated[str, Form()],
+    ) -> HTMLResponse | RedirectResponse:
+        sid = request.cookies.get(SESSION_COOKIE)
+        sessions = request.app.state.keymaster_sessions
+        if resolve_unlocked_vault(sessions, sid) is None:
+            return RedirectResponse("/unlock", status_code=303)
+
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=303)
+        if find_profile(vault, profile_id) is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+
+        try:
+            validate_display_name(display_name)
+        except ValueError as e:
+            prof = find_profile(vault, profile_id)
+            assert prof is not None
+            return templates.TemplateResponse(
+                request,
+                "profile_rename.html",
+                _ctx(
+                    request,
+                    page_title=f"Rename — {prof.display_name}",
+                    profile=prof.to_public_dict(),
+                    nav_section="rename",
+                    error=str(e),
+                    form_display_name=(display_name or "").strip(),
+                ),
+                status_code=400,
+            )
+
+        path = vault_json_path()
+        try:
+            envelope = read_envelope(path)
+            disk_inner = decrypt_vault_payload(passphrase, envelope)
+            profiles = inner_payload_to_profiles(disk_inner)
+        except (OSError, ValueError, VaultCryptoError):
+            prof = find_profile(vault, profile_id)
+            assert prof is not None
+            return templates.TemplateResponse(
+                request,
+                "profile_rename.html",
+                _ctx(
+                    request,
+                    page_title=f"Rename — {prof.display_name}",
+                    profile=prof.to_public_dict(),
+                    nav_section="rename",
+                    error="Incorrect passphrase, or the vault file is damaged.",
+                    form_display_name=(display_name or "").strip(),
+                ),
+                status_code=401,
+            )
+
+        if not rename_profile_in_list(profiles, profile_id, display_name):
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+
+        inner_out = profiles_to_inner_payload(profiles)
+        try:
+            envelope_out = encrypt_vault_payload(passphrase, inner_out)
+            write_envelope(path, envelope_out)
+        except OSError:
+            prof = find_profile(vault, profile_id)
+            assert prof is not None
+            return templates.TemplateResponse(
+                request,
+                "profile_rename.html",
+                _ctx(
+                    request,
+                    page_title=f"Rename — {prof.display_name}",
+                    profile=prof.to_public_dict(),
+                    nav_section="rename",
+                    error="Could not write the vault file.",
+                    form_display_name=(display_name or "").strip(),
+                ),
+                status_code=500,
+            )
+
+        replace_session_vault(sessions, sid, UnlockedVault(profiles))
+        return RedirectResponse(f"/identities/{profile_id}", status_code=303)
+
+    @app.get("/identities/{profile_id}/export-pub", response_model=None)
+    async def identity_export_pub(
+        request: Request,
+        profile_id: str,
+    ) -> Response | RedirectResponse:
+        vault = _session_vault(request)
+        if vault is None:
+            return RedirectResponse("/unlock", status_code=302)
+        profile = find_profile(vault, profile_id)
+        if profile is None:
+            return templates.TemplateResponse(
+                request,
+                "not_found.html",
+                _ctx(request, page_title="Not found", nav_section="none"),
+                status_code=404,
+            )
+        body = profile.to_export_public_v1()
+        filename = _safe_export_pub_filename(profile.display_name, profile.id)
+        payload = json.dumps(body, indent=2) + "\n"
+        return Response(
+            content=payload.encode("utf-8"),
+            media_type="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
         )
 
     @app.get("/identities/{profile_id}", response_model=None)

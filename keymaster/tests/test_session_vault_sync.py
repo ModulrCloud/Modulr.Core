@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from modulr_keymaster.profiles import new_profile
-from modulr_keymaster.sessions import SessionRecord, UnlockedVault, replace_session_vault
+from modulr_keymaster.sessions import (
+    SessionRecord,
+    UnlockedVault,
+    replace_session_vault,
+)
 
 
 def test_replace_session_vault_updates_every_active_session() -> None:

@@ -41,6 +41,16 @@ class ProfileSecrets:
             "public_key_hex": self.public_key_hex(),
         }
 
+    def to_export_public_v1(self) -> dict[str, str]:
+        """Stable JSON shape for ``.pub.json`` download (public material only)."""
+        return {
+            "format": "modulr_keymaster_ed25519_public_v1",
+            "profile_id": self.id,
+            "display_name": self.display_name,
+            "created_at": self.created_at,
+            "public_key_hex": self.public_key_hex(),
+        }
+
 
 def _seed_b64_to_key(seed_b64: str) -> Ed25519PrivateKey:
     try:
@@ -115,6 +125,32 @@ def empty_inner_payload() -> dict[str, Any]:
 DISPLAY_NAME_MAX_LEN = 80
 
 
+def validate_display_name(display_name: str) -> str:
+    """Return stripped display name or raise ``ValueError``."""
+    name = (display_name or "").strip()
+    if not name:
+        raise ValueError("display name is required")
+    if len(name) > DISPLAY_NAME_MAX_LEN:
+        raise ValueError(
+            f"display name must be at most {DISPLAY_NAME_MAX_LEN} characters",
+        )
+    return name
+
+
+def rename_profile_in_list(
+    profiles: list[ProfileSecrets],
+    profile_id: str,
+    new_display_name: str,
+) -> bool:
+    """Set ``display_name`` for the matching profile. Returns False if id not found."""
+    name = validate_display_name(new_display_name)
+    for p in profiles:
+        if p.id == profile_id:
+            p.display_name = name
+            return True
+    return False
+
+
 def sign_challenge_utf8(private_key: Ed25519PrivateKey, text: str) -> bytes:
     """Sign UTF-8 bytes of ``text`` (genesis / admin challenges, interim rule)."""
     raw = text.encode("utf-8")
@@ -127,13 +163,7 @@ def sign_challenge_utf8(private_key: Ed25519PrivateKey, text: str) -> bytes:
 
 def new_profile(display_name: str) -> ProfileSecrets:
     """Generate a new random Ed25519 identity."""
-    name = (display_name or "").strip()
-    if not name:
-        raise ValueError("display name is required")
-    if len(name) > DISPLAY_NAME_MAX_LEN:
-        raise ValueError(
-            f"display name must be at most {DISPLAY_NAME_MAX_LEN} characters",
-        )
+    name = validate_display_name(display_name)
     key = Ed25519PrivateKey.generate()
     now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     return ProfileSecrets(
