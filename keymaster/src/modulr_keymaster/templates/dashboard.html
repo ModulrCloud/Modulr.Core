@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="modulr-glass-surface km-panel">
+    <h1 class="km-display km-text">Identities</h1>
+    <p class="km-lead km-text-muted">
+      Local Ed25519 profiles in your vault (mock data). Registration and name resolution use
+      Modulr.Core — open a row for public key details and copy-to-clipboard.
+    </p>
+    <div class="km-actions" style="margin-top: 0; margin-bottom: 0.5rem">
+      <a class="km-btn km-btn--ghost" href="/unlock">Lock vault (placeholder)</a>
+    </div>
+    <div class="km-profile-grid">
+      {% for p in profiles %}
+        <a class="km-profile-card modulr-glass-surface" href="/identities/{{ p.id }}">
+          <h2 class="km-display km-text">{{ p.display_name }}</h2>
+          <span class="km-meta km-text-muted">id: {{ p.id }} · created {{ p.created_at[:10] }}</span>
+          <pre class="km-mono-block km-scrollbar km-text-muted" aria-label="Public key preview">{{ p.public_key_hex[:32] }}…</pre>
+        </a>
+      {% endfor %}
+    </div>
+  </article>
+{% endblock %}

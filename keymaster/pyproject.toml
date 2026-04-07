@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "modulr-keymaster"
+version = "0.1.0"
+description = "Keymaster — local Ed25519 identity vault (loopback UI)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "BSL-1.1" }
+authors = [{ name = "Modulr" }]
+dependencies = [
+    "fastapi>=0.115.0",
+    "jinja2>=3.1.0",
+    "uvicorn[standard]>=0.30.0",
+]
+
+[project.scripts]
+modulr-keymaster = "modulr_keymaster.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modulr_keymaster"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/modulr_keymaster/static" = "modulr_keymaster/static"
+"src/modulr_keymaster/templates" = "modulr_keymaster/templates"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

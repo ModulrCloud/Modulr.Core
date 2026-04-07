@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}{{ page_title }} — Keymaster{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Quantico:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="{{ request.url_for('static', path='modulr-logo.svg') }}" type="image/svg+xml" />
+    <style>
+      :root {
+        --font-inter: "Inter", ui-sans-serif, system-ui, sans-serif;
+        --font-quantico: "Quantico", ui-sans-serif, sans-serif;
+      }
+    </style>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='modulr-theme.css') }}" />
+    <link rel="stylesheet" href="{{ request.url_for('static', path='keymaster.css') }}" />
+  </head>
+  <body class="km-body km-text">
+    <div class="km-bg-host" aria-hidden="true">
+      <div class="km-bg-base"></div>
+      <canvas id="km-fireflies" class="km-fireflies"></canvas>
+    </div>
+
+    <div class="km-z-main km-layout-col">
+      <header class="km-header">
+        <div class="km-header-inner">
+          <div class="modulr-glass-surface km-brand-row">
+            <a class="km-brand-link" href="/unlock">
+              <img
+                class="km-logo"
+                src="{{ request.url_for('static', path='modulr-logo.svg') }}"
+                width="28"
+                height="23"
+                alt=""
+              />
+              <div class="km-brand-titles">
+                <span class="km-display km-brand-title km-text">Keymaster</span>
+                <span class="km-brand-sub km-text-muted">Local identity vault</span>
+              </div>
+            </a>
+            <nav class="km-nav" aria-label="Keymaster">
+              <a
+                href="/unlock"
+                class="{% if nav_section == 'unlock' %}km-nav--active{% endif %}"
+                {% if nav_section == 'unlock' %}aria-current="page"{% endif %}
+                >Unlock</a
+              >
+              <a
+                href="/setup"
+                class="{% if nav_section == 'setup' %}km-nav--active{% endif %}"
+                {% if nav_section == 'setup' %}aria-current="page"{% endif %}
+                >New vault</a
+              >
+              <a
+                href="/identities"
+                class="{% if nav_section == 'identities' or nav_section == 'detail' %}km-nav--active{% endif %}"
+                {% if nav_section == 'identities' %}aria-current="page"{% endif %}
+                >Identities</a
+              >
+            </nav>
+          </div>
+
+          <div class="km-chrome-actions">
+            <button
+              type="button"
+              class="modulr-glass-surface km-icon-btn"
+              id="km-theme-toggle"
+              aria-label="Switch theme"
+              data-mode="dark"
+            >
+              <svg
+                class="km-moon"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+              <svg
+                class="km-sun"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main class="km-main">
+        <div class="km-main-inner">
+          {% if ui_preview %}
+            <p class="km-preview-pill km-text-muted" role="status">
+              UI preview — encrypted vault and signing are not wired yet
+            </p>
+          {% endif %}
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+
+    <script src="{{ request.url_for('static', path='keymaster.js') }}"></script>
+    <style>
+      html[data-theme="dark"] .km-sun {
+        display: none;
+      }
+      html[data-theme="light"] .km-moon {
+        display: none;
+      }
+    </style>
+  </body>
+</html>
