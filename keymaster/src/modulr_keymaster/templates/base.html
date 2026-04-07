@@ -58,9 +58,15 @@
               >
               <a
                 href="/identities"
-                class="{% if nav_section == 'identities' or nav_section == 'detail' %}km-nav--active{% endif %}"
+                class="{% if nav_section == 'identities' or nav_section == 'detail' or nav_section == 'new' %}km-nav--active{% endif %}"
                 {% if nav_section == 'identities' %}aria-current="page"{% endif %}
                 >Identities</a
+              >
+              <a
+                href="/identities/new"
+                class="{% if nav_section == 'new' %}km-nav--active{% endif %}"
+                {% if nav_section == 'new' %}aria-current="page"{% endif %}
+                >New identity</a
               >
             </nav>
           </div>

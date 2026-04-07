@@ -10,7 +10,7 @@ Local **Ed25519** identity tool: **encrypted** `vault.json`, **password-protect*
 
 - **Vault file:** `vault.json` under **`%USERPROFILE%\.modulr\keymaster\`** (Windows) or **`~/.modulr/keymaster/`** (macOS/Linux). Override with env **`KEYMASTER_VAULT_PATH`** (full file path) or **`KEYMASTER_VAULT_DIR`** (directory; filename remains `vault.json`).
 - **Crypto:** Argon2id key derivation + AES-GCM envelope. Inner JSON holds a `profiles` array (empty after first create until add-identity work lands).
-- **Session:** After unlock or create, an **httpOnly** cookie holds an opaque session id; **private keys stay in server RAM** only until **Lock vault** or process exit.
+- **Session:** After unlock or create, an **httpOnly** cookie holds an opaque session id; **private keys stay in server RAM** until **Lock vault**, **idle timeout** (~30 minutes without a request), **max session lifetime** (8 hours), or process exit. Stale unlocks (e.g. lost cookie, unlock again without lock) are purged on the next HTTP request.
 - **UI:** FastAPI + Jinja + static CSS aligned with the Modulr customer shell; **fireflies** background (static gradient only if `prefers-reduced-motion: reduce`).
 
 ## Run (development)
@@ -47,6 +47,7 @@ pytest
 | `/unlock` | GET/POST | Decrypt vault; POST sets session → `/identities` |
 | `/lock` | POST | Clear session → `/unlock` |
 | `/identities` | GET | Dashboard (requires session) |
+| `/identities/new` | GET/POST | Add Ed25519 profile (session + vault passphrase to re-encrypt disk) |
 | `/identities/{id}` | GET | Profile + public key (requires session) |
 
 Static assets: `src/modulr_keymaster/static/`; templates: `templates/`.

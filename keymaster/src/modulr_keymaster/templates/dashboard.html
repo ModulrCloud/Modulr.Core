@@ -3,13 +3,14 @@
   <article class="modulr-glass-surface km-panel">
     <h1 class="km-display km-text">Identities</h1>
     {% if vault_created %}
-      <p class="km-banner-success" role="status">Vault created. You can add identities in a future update.</p>
+      <p class="km-banner-success" role="status">Vault created. Add an identity below.</p>
     {% endif %}
     <p class="km-lead km-text-muted">
       Local Ed25519 profiles in your unlocked vault. Registration and name resolution use Modulr.Core —
       open a row for public key details and copy-to-clipboard.
     </p>
     <div class="km-actions" style="margin-top: 0; margin-bottom: 0.5rem">
+      <a class="km-btn km-btn--primary" href="/identities/new">New identity</a>
       <form method="post" action="/lock" style="display: inline">
         <button type="submit" class="km-btn km-btn--ghost">Lock vault</button>
       </form>
@@ -26,7 +27,7 @@
       </div>
     {% else %}
       <p class="km-lead km-text-muted" style="margin-top: 1rem">
-        No identities yet. This vault is empty — add keys when that flow is available.
+        No identities yet — use <strong class="km-text">New identity</strong> to generate a key.
       </p>
     {% endif %}
   </article>

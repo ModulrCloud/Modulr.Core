@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -13,8 +12,22 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from modulr_keymaster.paths import vault_exists, vault_json_path
-from modulr_keymaster.profiles import empty_inner_payload, inner_payload_to_profiles
-from modulr_keymaster.sessions import SESSION_COOKIE, UnlockedVault, find_profile
+from modulr_keymaster.profiles import (
+    DISPLAY_NAME_MAX_LEN,
+    empty_inner_payload,
+    inner_payload_to_profiles,
+    new_profile,
+    profiles_to_inner_payload,
+)
+from modulr_keymaster.sessions import (
+    SESSION_COOKIE,
+    UnlockedVault,
+    find_profile,
+    new_session_id,
+    prune_expired_sessions,
+    replace_session_vault,
+    resolve_unlocked_vault,
+)
 from modulr_keymaster.vault_crypto import (
     MIN_PASSPHRASE_LENGTH,
     VaultCryptoError,
@@ -37,10 +50,8 @@ def _ctx(request: Request, **extra: object) -> dict[str, object]:
 
 def _session_vault(request: Request) -> UnlockedVault | None:
     sid = request.cookies.get(SESSION_COOKIE)
-    if not sid:
-        return None
-    sessions: dict[str, UnlockedVault] = request.app.state.keymaster_sessions
-    return sessions.get(sid)
+    sessions = request.app.state.keymaster_sessions
+    return resolve_unlocked_vault(sessions, sid)
 
 
 def _bind_session(
@@ -48,9 +59,8 @@ def _bind_session(
     request: Request,
     vault: UnlockedVault,
 ) -> None:
-    sid = secrets.token_urlsafe(32)
-    sessions: dict[str, UnlockedVault] = request.app.state.keymaster_sessions
-    sessions[sid] = vault
+    sessions = request.app.state.keymaster_sessions
+    sid = new_session_id(sessions, vault)
     response.set_cookie(
         SESSION_COOKIE,
         sid,
@@ -86,6 +96,11 @@ def create_app() -> FastAPI:
         StaticFiles(directory=str(_PKG_DIR / "static")),
         name="static",
     )
+
+    @app.middleware("http")
+    async def expire_stale_sessions(request: Request, call_next):
+        prune_expired_sessions(request.app.state.keymaster_sessions)
+        return await call_next(request)
 
     @app.get("/", response_class=RedirectResponse, response_model=None)
     async def root() -> RedirectResponse:
@@ -241,6 +256,112 @@ def create_app() -> FastAPI:
                 vault_created=created,
             ),
         )
+
+    @app.get("/identities/new", response_model=None)
+    async def identities_new_get(
+        request: Request,
+    ) -> HTMLResponse | RedirectResponse:
+        if _session_vault(request) is None:
+            return RedirectResponse("/unlock", status_code=302)
+        return templates.TemplateResponse(
+            request,
+            "profile_new.html",
+            _ctx(request, page_title="New identity", nav_section="new"),
+        )
+
+    @app.post("/identities/new", response_model=None)
+    async def identities_new_post(
+        request: Request,
+        display_name: Annotated[str, Form()],
+        passphrase: Annotated[str, Form()],
+    ) -> HTMLResponse | RedirectResponse:
+        sid = request.cookies.get(SESSION_COOKIE)
+        sessions = request.app.state.keymaster_sessions
+        if resolve_unlocked_vault(sessions, sid) is None:
+            return RedirectResponse("/unlock", status_code=303)
+
+        name = (display_name or "").strip()
+        if not name:
+            return templates.TemplateResponse(
+                request,
+                "profile_new.html",
+                _ctx(
+                    request,
+                    page_title="New identity",
+                    nav_section="new",
+                    error="Enter a display name.",
+                ),
+                status_code=400,
+            )
+        if len(name) > DISPLAY_NAME_MAX_LEN:
+            return templates.TemplateResponse(
+                request,
+                "profile_new.html",
+                _ctx(
+                    request,
+                    page_title="New identity",
+                    nav_section="new",
+                    error=(
+                        "Display name must be at most "
+                        f"{DISPLAY_NAME_MAX_LEN} characters."
+                    ),
+                ),
+                status_code=400,
+            )
+
+        path = vault_json_path()
+        try:
+            envelope = read_envelope(path)
+            disk_inner = decrypt_vault_payload(passphrase, envelope)
+            profiles = inner_payload_to_profiles(disk_inner)
+        except (OSError, ValueError, VaultCryptoError):
+            return templates.TemplateResponse(
+                request,
+                "profile_new.html",
+                _ctx(
+                    request,
+                    page_title="New identity",
+                    nav_section="new",
+                    error="Incorrect passphrase, or the vault file is damaged.",
+                ),
+                status_code=401,
+            )
+
+        try:
+            added = new_profile(name)
+        except ValueError as e:
+            return templates.TemplateResponse(
+                request,
+                "profile_new.html",
+                _ctx(
+                    request,
+                    page_title="New identity",
+                    nav_section="new",
+                    error=str(e),
+                ),
+                status_code=400,
+            )
+
+        profiles.append(added)
+        inner_out = profiles_to_inner_payload(profiles)
+        try:
+            envelope_out = encrypt_vault_payload(passphrase, inner_out)
+            write_envelope(path, envelope_out)
+        except OSError:
+            return templates.TemplateResponse(
+                request,
+                "profile_new.html",
+                _ctx(
+                    request,
+                    page_title="New identity",
+                    nav_section="new",
+                    error="Could not write the vault file.",
+                ),
+                status_code=500,
+            )
+
+        replace_session_vault(sessions, sid, UnlockedVault(profiles))
+        return RedirectResponse(f"/identities/{added.id}", status_code=303)
 
     @app.get("/identities/{profile_id}", response_model=None)
     async def identity_detail(

@@ -109,13 +109,23 @@ def empty_inner_payload() -> dict[str, Any]:
     return {"profiles": []}
 
 
+DISPLAY_NAME_MAX_LEN = 80
+
+
 def new_profile(display_name: str) -> ProfileSecrets:
     """Generate a new random Ed25519 identity."""
+    name = (display_name or "").strip()
+    if not name:
+        raise ValueError("display name is required")
+    if len(name) > DISPLAY_NAME_MAX_LEN:
+        raise ValueError(
+            f"display name must be at most {DISPLAY_NAME_MAX_LEN} characters",
+        )
     key = Ed25519PrivateKey.generate()
     now = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     return ProfileSecrets(
         id=str(uuid.uuid4()),
-        display_name=display_name.strip() or "Unnamed",
+        display_name=name,
         created_at=now,
         private_key=key,
     )
