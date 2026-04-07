@@ -1,0 +1,110 @@
+/**
+ * Subset of `frontend/app/globals.css` — Core shell tokens + glass.
+ * Light theme: toggle `data-theme="light"` on `<html>` (see keymaster.js).
+ */
+:root {
+  --modulr-page-bg: #10131a;
+  --modulr-page-bg-2: #161b26;
+  --modulr-text: #e9eaef;
+  --modulr-text-muted: #9aa0b0;
+  --modulr-accent: #ffb700;
+  --modulr-accent-contrast: #111218;
+  --modulr-glass-fill: rgba(22, 25, 36, 0.22);
+  --modulr-glass-panel-fill: rgba(22, 25, 36, 0.1);
+  --modulr-glass-border: rgba(255, 255, 255, 0.1);
+  --modulr-glass-highlight: rgba(255, 255, 255, 0.06);
+  --modulr-theme-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --modulr-theme-duration: 0.5s;
+  --modulr-text-color-duration: 0.18s;
+  --modulr-glass-blur: 22px;
+  --modulr-glass-sat: 1.35;
+}
+
+html[data-theme="light"] {
+  --modulr-page-bg: #e8eaf2;
+  --modulr-page-bg-2: #dce0ee;
+  --modulr-text: #111218;
+  --modulr-text-muted: #5c6170;
+  --modulr-glass-fill: rgba(255, 255, 255, 0.34);
+  --modulr-glass-panel-fill: rgba(255, 255, 255, 0.4);
+  --modulr-glass-border: rgba(15, 23, 42, 0.11);
+  --modulr-glass-highlight: rgba(255, 255, 255, 0.72);
+  --modulr-glass-blur: 32px;
+  --modulr-glass-sat: 1.55;
+}
+
+html {
+  color-scheme: dark light;
+  transition: background-color var(--modulr-theme-duration) var(--modulr-theme-ease);
+  background-color: var(--modulr-page-bg);
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+.km-display {
+  font-family: var(--font-quantico), ui-sans-serif, sans-serif;
+}
+
+.km-body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--modulr-page-bg);
+  color: var(--modulr-text);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  transition:
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+.km-text {
+  color: var(--modulr-text);
+  transition: color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+.km-text-muted {
+  color: var(--modulr-text-muted);
+  transition: color var(--modulr-text-color-duration) var(--modulr-theme-ease);
+}
+
+.modulr-glass-surface {
+  -webkit-backdrop-filter: blur(var(--modulr-glass-blur)) saturate(var(--modulr-glass-sat));
+  backdrop-filter: blur(var(--modulr-glass-blur)) saturate(var(--modulr-glass-sat));
+  transition:
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    border-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    box-shadow var(--modulr-theme-duration) var(--modulr-theme-ease),
+    -webkit-backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease),
+    backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--modulr-accent) 35%, transparent);
+}
+
+.km-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #ffb700 var(--modulr-page-bg-2);
+}
+
+.km-scrollbar::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.km-scrollbar::-webkit-scrollbar-track {
+  margin: 4px 0;
+  background: var(--modulr-page-bg-2);
+  border-radius: 999px;
+}
+
+.km-scrollbar::-webkit-scrollbar-thumb {
+  background: #ffb700;
+  border-radius: 999px;
+  border: 2px solid var(--modulr-page-bg-2);
+}

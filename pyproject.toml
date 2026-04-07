@@ -36,10 +36,10 @@ addopts = "-q"
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-src = ["src", "tests", "scripts"]
+src = ["src", "tests", "scripts", "keymaster/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["modulr_core"]
+known-first-party = ["modulr_core", "modulr_keymaster"]

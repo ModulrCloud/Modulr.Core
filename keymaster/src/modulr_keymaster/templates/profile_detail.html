@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="modulr-glass-surface km-panel">
+    <h1 class="km-display km-text">{{ profile.display_name }}</h1>
+    <p class="km-lead km-text-muted">
+      Signing public key (Ed25519, 64 hex chars). Safe to share; never share the private seed.
+    </p>
+    <p class="km-meta km-text-muted">Profile id: <code class="km-text">{{ profile.id }}</code></p>
+    <pre
+      id="km-pubkey-hex"
+      class="km-mono-block km-scrollbar km-text"
+      style="max-height: none"
+    >{{ profile.public_key_hex }}</pre>
+    <div class="km-actions">
+      <button type="button" class="km-btn km-btn--primary" onclick="kmCopyPubkey('km-pubkey-hex')">
+        Copy public key
+      </button>
+      <a class="km-btn km-btn--ghost" href="/identities">All identities</a>
+    </div>
+    <p id="km-copy-hint" class="km-foot-hint km-text-muted" hidden>Copied to clipboard.</p>
+  </article>
+{% endblock %}

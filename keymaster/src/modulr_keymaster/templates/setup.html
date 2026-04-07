@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="modulr-glass-surface km-panel">
+    <h1 class="km-display km-text">Create vault</h1>
+    <p class="km-lead km-text-muted">
+      First-run setup: choose a strong passphrase. Keys never leave this machine. This screen is
+      visual only until the vault module exists.
+    </p>
+    <form method="get" action="/identities" onsubmit="return false;">
+      <div class="km-form-group">
+        <label class="km-text" for="pw1">Passphrase</label>
+        <input class="km-input" id="pw1" name="pw1" type="password" autocomplete="new-password" />
+      </div>
+      <div class="km-form-group">
+        <label class="km-text" for="pw2">Confirm passphrase</label>
+        <input class="km-input" id="pw2" name="pw2" type="password" autocomplete="new-password" />
+      </div>
+      <div class="km-actions">
+        <button type="button" class="km-btn km-btn--primary" disabled aria-disabled="true">Create vault</button>
+        <a class="km-btn km-btn--ghost" href="/unlock">Already have a vault</a>
+      </div>
+    </form>
+  </article>
+{% endblock %}

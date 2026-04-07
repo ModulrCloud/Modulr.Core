@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="modulr-glass-surface km-panel">
+    <h1 class="km-display km-text">Unlock vault</h1>
+    <p class="km-lead km-text-muted">
+      Enter the passphrase for your local vault. Nothing is persisted in this preview — the form is
+      for layout only.
+    </p>
+    <form method="get" action="/identities" onsubmit="return false;">
+      <div class="km-form-group">
+        <label class="km-text" for="pass">Passphrase</label>
+        <input class="km-input" id="pass" name="pass" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <div class="km-actions">
+        <button type="button" class="km-btn km-btn--primary" disabled aria-disabled="true">Unlock</button>
+        <a class="km-btn km-btn--ghost" href="/setup">First run — create vault</a>
+      </div>
+    </form>
+    <p class="km-foot-hint km-text-muted">
+      Production flow will decrypt your vault in memory only and keep the bind on loopback.
+    </p>
+    <p class="km-skip-row km-text-muted">
+      <a href="/identities">Skip to identities (mock data)</a> to review the dashboard layout.
+    </p>
+  </article>
+{% endblock %}
