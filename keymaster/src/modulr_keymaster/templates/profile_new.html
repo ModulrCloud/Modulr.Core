@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+  <article class="modulr-glass-surface km-panel">
+    <h1 class="km-display km-text">New identity</h1>
+    <p class="km-lead km-text-muted">
+      Creates a new Ed25519 key in this vault. Use the <strong class="km-text">same passphrase</strong> you
+      use to unlock the vault (not a new password) — we need it to re-encrypt
+      <code class="km-text">vault.json</code> on disk. Suggested names: <strong class="km-text">personal</strong>,
+      <strong class="km-text">organization</strong>.
+    </p>
+    {% if error %}
+      <p class="km-form-error" role="alert">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/identities/new">
+      <div class="km-form-group">
+        <label class="km-text" for="display_name">Display name</label>
+        <input
+          class="km-input"
+          id="display_name"
+          name="display_name"
+          type="text"
+          autocomplete="off"
+          maxlength="80"
+          required
+          placeholder="e.g. personal"
+        />
+      </div>
+      <div class="km-form-group">
+        <label class="km-text" for="passphrase">Vault passphrase (same as unlock)</label>
+        <input
+          class="km-input"
+          id="passphrase"
+          name="passphrase"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+      </div>
+      <div class="km-actions">
+        <button type="submit" class="km-btn km-btn--primary">Generate &amp; save</button>
+        <a class="km-btn km-btn--ghost" href="/identities">Cancel</a>
+      </div>
+    </form>
+  </article>
+{% endblock %}
