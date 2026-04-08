@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+import uuid
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from modulr_core.errors.exceptions import WireValidationError
 from modulr_core.validation.hex_codec import InvalidHexEncoding, decode_hex_fixed
+from modulr_core.validation.names import validate_modulr_org_domain
 
 _MODULR_APEX_DOMAIN_MAX_LEN = 253
 
@@ -19,6 +22,7 @@ class CoreGenesisSnapshot:
     genesis_complete: bool
     bootstrap_signing_pubkey_hex: str | None
     modulr_apex_domain: str | None
+    instance_id: str | None
     updated_at: int
 
 
@@ -34,17 +38,27 @@ def _validate_bootstrap_pubkey_hex(pub_hex: str) -> None:
 
 
 def _validate_apex_domain(domain: str) -> str:
+    """Enforce dotted DNS-style apex (``validate_modulr_org_domain``), max 253 chars."""
     d = domain.strip()
     if not d:
         raise ValueError("modulr_apex_domain must be non-empty when set")
     if len(d) > _MODULR_APEX_DOMAIN_MAX_LEN:
         mx = _MODULR_APEX_DOMAIN_MAX_LEN
         raise ValueError(f"modulr_apex_domain must be at most {mx} characters")
-    return d
+    try:
+        return validate_modulr_org_domain(d)
+    except WireValidationError as e:
+        raise ValueError(
+            "modulr_apex_domain must be a dotted DNS-style domain "
+            "(same label rules as register_org; e.g. modulr.network)",
+        ) from e
 
 
 class CoreGenesisRepository:
-    """Read/update the single ``core_genesis`` row (migration ``007`` seeds it)."""
+    """Read/update the single ``core_genesis`` row.
+
+    Migration ``007`` seeds the row; ``008`` adds ``instance_id``.
+    """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -53,7 +67,7 @@ class CoreGenesisRepository:
         cur = self._conn.execute(
             """
             SELECT genesis_complete, bootstrap_signing_pubkey_hex,
-                   modulr_apex_domain, updated_at
+                   modulr_apex_domain, instance_id, updated_at
             FROM core_genesis
             WHERE singleton = 1
             """,
@@ -66,12 +80,46 @@ class CoreGenesisRepository:
         pk_s = str(pk) if pk is not None else None
         apex = row["modulr_apex_domain"]
         apex_s = str(apex).strip() if apex is not None and str(apex).strip() else None
+        iid = row["instance_id"]
+        iid_s = str(iid).strip() if iid is not None and str(iid).strip() else None
         return CoreGenesisSnapshot(
             genesis_complete=complete,
             bootstrap_signing_pubkey_hex=pk_s,
             modulr_apex_domain=apex_s,
+            instance_id=iid_s,
             updated_at=int(row["updated_at"]),
         )
+
+    def touch(self, *, updated_at: int) -> None:
+        """Bump ``updated_at`` on the singleton row (activity / wizard progress)."""
+        self._conn.execute(
+            """
+            UPDATE core_genesis SET updated_at = ? WHERE singleton = 1
+            """,
+            (updated_at,),
+        )
+
+    def get_or_create_instance_id(self, *, updated_at: int) -> str:
+        """Return stable Core ``instance_id`` (UUID); allocate once on first use."""
+        cur = self._conn.execute(
+            "SELECT instance_id FROM core_genesis WHERE singleton = 1",
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise RuntimeError("core_genesis singleton missing; run apply_migrations")
+        existing = row["instance_id"]
+        if existing is not None and str(existing).strip():
+            return str(existing).strip()
+        new_id = str(uuid.uuid4())
+        self._conn.execute(
+            """
+            UPDATE core_genesis
+            SET instance_id = ?, updated_at = ?
+            WHERE singleton = 1
+            """,
+            (new_id, updated_at),
+        )
+        return new_id
 
     def set_genesis_complete(self, *, complete: bool, updated_at: int) -> None:
         self._conn.execute(

@@ -30,6 +30,7 @@ def test_core_genesis_default_after_migration() -> None:
     assert s.genesis_complete is False
     assert s.bootstrap_signing_pubkey_hex is None
     assert s.modulr_apex_domain is None
+    assert s.instance_id is None
     assert s.updated_at == 0
 
 
@@ -81,6 +82,10 @@ def test_core_genesis_apex_domain_validation() -> None:
         repo.set_modulr_apex_domain(apex_domain="   ", updated_at=1)
     with pytest.raises(ValueError, match="at most"):
         repo.set_modulr_apex_domain(apex_domain="x" * 254, updated_at=1)
+    with pytest.raises(ValueError, match="modulr_apex_domain must be a dotted"):
+        repo.set_modulr_apex_domain(apex_domain="not a domain", updated_at=1)
+    with pytest.raises(ValueError, match="modulr_apex_domain must be a dotted"):
+        repo.set_modulr_apex_domain(apex_domain="singlelabel", updated_at=1)
 
 
 def test_schema_migrations_includes_007() -> None:
@@ -89,3 +94,13 @@ def test_schema_migrations_includes_007() -> None:
         "SELECT 1 FROM schema_migrations WHERE version = 7",
     )
     assert cur.fetchone() is not None
+
+
+def test_schema_migrations_includes_008_genesis_challenge() -> None:
+    conn = _conn()
+    cur = conn.execute("SELECT 1 FROM schema_migrations WHERE version = 8")
+    assert cur.fetchone() is not None
+    cur2 = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='genesis_challenge'",
+    )
+    assert cur2.fetchone() is not None
