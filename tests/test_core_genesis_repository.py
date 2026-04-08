@@ -1,4 +1,13 @@
-"""Singleton ``core_genesis`` persistence (migration 007)."""
+"""
+Tests for ``CoreGenesisRepository`` and related schema migrations.
+
+Covers the singleton ``core_genesis`` row (migration 007) and migration 008
+(``instance_id``, ``genesis_challenge`` table).
+
+Note:
+    Apex domain and pubkey validation live on the repository; migration ordering
+    is asserted against ``schema_migrations`` and ``sqlite_master``.
+"""
 
 from __future__ import annotations
 
@@ -24,6 +33,11 @@ def _conn() -> sqlite3.Connection:
 
 
 def test_core_genesis_default_after_migration() -> None:
+    """
+    Default singleton row matches migration seed.
+
+    Expects incomplete genesis and unset pubkey, apex, and instance id.
+    """
     conn = _conn()
     repo = CoreGenesisRepository(conn)
     s = repo.get()
@@ -51,6 +65,7 @@ def test_core_genesis_set_pubkey_and_complete() -> None:
 
 
 def test_core_genesis_rejects_invalid_pubkey_hex() -> None:
+    """Non-hex pubkey strings are rejected before write."""
     conn = _conn()
     repo = CoreGenesisRepository(conn)
     with pytest.raises(ValueError, match="expected 64 hex"):
@@ -66,6 +81,7 @@ def test_core_genesis_rejects_uppercase_pubkey_hex() -> None:
 
 
 def test_core_genesis_clear_pubkey() -> None:
+    """Setting bootstrap pubkey to ``None`` clears the column."""
     conn = _conn()
     repo = CoreGenesisRepository(conn)
     k = _valid_pubkey_hex()
@@ -76,6 +92,7 @@ def test_core_genesis_clear_pubkey() -> None:
 
 
 def test_core_genesis_apex_domain_validation() -> None:
+    """Empty, overlong, and non-dotted apex values raise ``ValueError``."""
     conn = _conn()
     repo = CoreGenesisRepository(conn)
     with pytest.raises(ValueError, match="non-empty"):
@@ -89,6 +106,7 @@ def test_core_genesis_apex_domain_validation() -> None:
 
 
 def test_schema_migrations_includes_007() -> None:
+    """Assert migration 007 is recorded (``core_genesis`` seed)."""
     conn = _conn()
     cur = conn.execute(
         "SELECT 1 FROM schema_migrations WHERE version = 7",
@@ -97,10 +115,16 @@ def test_schema_migrations_includes_007() -> None:
 
 
 def test_schema_migrations_includes_008_genesis_challenge() -> None:
+    """
+    Assert migration 008 applied and ``genesis_challenge`` table exists.
+
+    Migration 008 adds ``genesis_challenge`` and ``core_genesis.instance_id``.
+    """
     conn = _conn()
     cur = conn.execute("SELECT 1 FROM schema_migrations WHERE version = 8")
     assert cur.fetchone() is not None
     cur2 = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='genesis_challenge'",
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name='genesis_challenge'",
     )
     assert cur2.fetchone() is not None
