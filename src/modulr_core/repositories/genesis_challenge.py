@@ -20,7 +20,7 @@ class GenesisChallengeRow:
 
 
 class GenesisChallengeRepository:
-    """CRUD for ``genesis_challenge`` (singleton row table, keyed by challenge_id)."""
+    """Persistence for ``genesis_challenge`` (one row per ``challenge_id``)."""
 
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
@@ -67,7 +67,19 @@ class GenesisChallengeRepository:
             return None
         return _row_to_challenge(row)
 
-    def mark_consumed(self, challenge_id: str, *, consumed_at: int) -> None:
+    def mark_consumed(self, challenge_id: str, *, consumed_at: int) -> bool:
+        """
+        Set ``consumed_at`` on a pending challenge (conditional single-use consume).
+
+        Args:
+            challenge_id: Primary key of the challenge row.
+            consumed_at: Unix seconds at consume time.
+
+        Returns:
+            True if exactly one row was updated. False if the row was missing or
+            ``consumed_at`` was already set (including lost races between readers
+            and this update).
+        """
         cur = self._conn.execute(
             """
             UPDATE genesis_challenge SET consumed_at = ?
@@ -75,8 +87,7 @@ class GenesisChallengeRepository:
             """,
             (consumed_at, challenge_id),
         )
-        if cur.rowcount != 1:
-            raise RuntimeError("challenge not found or already consumed")
+        return cur.rowcount == 1
 
 
 def _row_to_challenge(row: sqlite3.Row | tuple[Any, ...]) -> GenesisChallengeRow:

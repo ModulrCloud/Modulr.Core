@@ -178,3 +178,47 @@ def test_get_or_create_instance_id_stable() -> None:
     b = repo.get_or_create_instance_id(updated_at=20)
     assert a == b
     assert repo.get().instance_id == a
+
+
+def test_mark_consumed_returns_false_on_second_call() -> None:
+    """Second consume on the same row is a no-op and returns False."""
+    conn = _conn()
+    _, pk = _test_keypair()
+    repo = GenesisChallengeRepository(conn)
+    cid = "c" * 64
+    repo.insert(
+        challenge_id=cid,
+        subject_signing_pubkey_hex=pk,
+        body="x",
+        issued_at=1,
+        expires_at=400,
+    )
+    assert repo.mark_consumed(cid, consumed_at=2) is True
+    assert repo.mark_consumed(cid, consumed_at=3) is False
+
+
+def test_verify_and_consume_failed_mark_maps_to_already_consumed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    If the conditional consume updates zero rows after a valid signature,
+    surface ``challenge already consumed`` (e.g. concurrent verify won).
+    """
+    conn = _conn()
+    g_repo = CoreGenesisRepository(conn)
+    c_repo = GenesisChallengeRepository(conn)
+    priv, pk = _test_keypair()
+    svc = GenesisChallengeService(
+        genesis_repo=g_repo,
+        challenge_repo=c_repo,
+        clock=lambda: 1_000,
+    )
+    issued = svc.issue(subject_signing_pubkey_hex=pk)
+    sig = priv.sign(issued.body.encode("utf-8")).hex()
+
+    def _no_op_mark(_cid: str, *, consumed_at: int) -> bool:
+        return False
+
+    monkeypatch.setattr(c_repo, "mark_consumed", _no_op_mark)
+    with pytest.raises(GenesisChallengeError, match="challenge already consumed"):
+        svc.verify_and_consume(challenge_id=issued.challenge_id, signature_hex=sig)

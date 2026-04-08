@@ -118,7 +118,12 @@ def verify_genesis_challenge_signature(
 
 
 class GenesisChallengeService:
-    """Issue and verify one-shot genesis challenges (SQLite-backed)."""
+    """
+    Issue and verify one-shot genesis challenges stored in SQLite.
+
+    Callers should use one shared connection (or equivalent isolation) per request
+    so issue/verify and consume see consistent rows.
+    """
 
     def __init__(
         self,
@@ -127,11 +132,30 @@ class GenesisChallengeService:
         challenge_repo: GenesisChallengeRepository,
         clock: Callable[[], int],
     ) -> None:
+        """
+        Args:
+            genesis_repo: Singleton ``core_genesis`` row (instance id, completion).
+            challenge_repo: ``genesis_challenge`` rows.
+            clock: Callable returning current Unix seconds (inject for tests).
+        """
         self._genesis = genesis_repo
         self._challenges = challenge_repo
         self._clock = clock
 
     def issue(self, *, subject_signing_pubkey_hex: str) -> IssuedGenesisChallenge:
+        """
+        Create a new challenge bound to the operator-submitted signing pubkey.
+
+        Args:
+            subject_signing_pubkey_hex: Lowercase 64-hex Ed25519 public key to bind.
+
+        Returns:
+            Challenge id, canonical body (UTF-8 text to sign), and expiry metadata.
+
+        Raises:
+            GenesisChallengeError: If genesis is already complete or inputs are
+                invalid (via body builder).
+        """
         snap = self._genesis.get()
         if snap.genesis_complete:
             raise GenesisChallengeError("genesis already complete")
@@ -162,6 +186,18 @@ class GenesisChallengeService:
         )
 
     def verify_and_consume(self, *, challenge_id: str, signature_hex: str) -> None:
+        """
+        Verify the Ed25519 signature and mark the challenge consumed (one shot).
+
+        Args:
+            challenge_id: 64 lowercase hex challenge id (same as body ``nonce``).
+            signature_hex: 128 lowercase hex Ed25519 signature over ``UTF-8(body)``.
+
+        Raises:
+            GenesisChallengeError: Unknown id, already consumed, expired, bad
+                signature, genesis already complete, or another request consumed
+                the row after verification (concurrent duplicate submit / race).
+        """
         snap = self._genesis.get()
         if snap.genesis_complete:
             raise GenesisChallengeError("genesis already complete")
@@ -178,5 +214,6 @@ class GenesisChallengeService:
             signature_hex=signature_hex,
             expected_subject_pubkey_hex=row.subject_signing_pubkey_hex,
         )
-        self._challenges.mark_consumed(challenge_id, consumed_at=now)
+        if not self._challenges.mark_consumed(challenge_id, consumed_at=now):
+            raise GenesisChallengeError("challenge already consumed")
         self._genesis.touch(updated_at=now)
