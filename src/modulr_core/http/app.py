@@ -26,6 +26,7 @@ from modulr_core.errors.codes import ErrorCode
 from modulr_core.errors.exceptions import WireValidationError
 from modulr_core.http.config_resolve import resolve_config_path
 from modulr_core.http.envelope import error_response_envelope, try_parse_message_id
+from modulr_core.http.genesis import router as genesis_router
 from modulr_core.http.replay_cache import parse_stored_response_envelope
 from modulr_core.http.status_map import http_status_for_error_code
 from modulr_core.messages import validate_inbound_request
@@ -115,6 +116,8 @@ def create_app(
     app.state._owns_conn = owns_conn  # noqa: SLF001
     app.state.conn_lock = threading.Lock()
     app.state.clock = clock or now_epoch_seconds
+
+    app.include_router(genesis_router)
 
     cors_origins = _cors_allow_origins(settings)
     if cors_origins:

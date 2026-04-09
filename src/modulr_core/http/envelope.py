@@ -29,6 +29,51 @@ def try_parse_message_id(body: bytes) -> str | None:
     return mid if isinstance(mid, str) else None
 
 
+def unsigned_success_response_envelope(
+    *,
+    operation_response: str,
+    success_code: SuccessCode,
+    detail: str,
+    payload: dict[str, Any],
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """
+    Success-shaped JSON for unsigned HTTP handlers (no request ``message_id``).
+
+    Same top-level fields as :func:`success_response_envelope`, with
+    ``message_id`` and ``correlation_id`` set to ``None``.
+
+    Args:
+        operation_response: Wire ``operation`` for this response (e.g.
+            ``genesis_challenge_issued_response``).
+        success_code: Stable success code string.
+        detail: Human-readable summary.
+        payload: Response ``payload`` object (hashed like signed flows).
+        clock: Unix epoch seconds callable.
+
+    Returns:
+        Response body dict suitable for JSON encoding.
+    """
+    now = float(clock())
+    ts = datetime.fromtimestamp(now, tz=UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+    )
+    return {
+        "protocol_version": MODULE_VERSION,
+        "message_id": None,
+        "correlation_id": None,
+        "target_module": TARGET_MODULE_CORE,
+        "target_module_version": MODULE_VERSION,
+        "operation": operation_response,
+        "timestamp": ts,
+        "status": "success",
+        "code": str(success_code),
+        "detail": detail,
+        "payload": payload,
+        "payload_hash": payload_hash(payload),
+    }
+
+
 def success_response_envelope(
     *,
     request_message_id: str,
