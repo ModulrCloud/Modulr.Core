@@ -18,6 +18,7 @@ from modulr_core.config.schema import NetworkEnvironment, Settings
 from modulr_core.http import create_app
 from modulr_core.persistence import apply_migrations, connect_memory
 from modulr_core.repositories.core_genesis import CoreGenesisRepository
+from modulr_core.repositories.name_bindings import NameBindingsRepository
 
 
 def _settings(**overrides: Any) -> Settings:
@@ -113,6 +114,17 @@ def test_genesis_routes_forbidden_on_production() -> None:
     )
     assert rv.status_code == 403
     assert rv.json()["code"] == ErrorCode.GENESIS_OPERATIONS_NOT_ALLOWED
+    rc = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": "c" * 64,
+            "subject_signing_pubkey_hex": "a" * 64,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": "b" * 64,
+        },
+    )
+    assert rc.status_code == 403
+    assert rc.json()["code"] == ErrorCode.GENESIS_OPERATIONS_NOT_ALLOWED
 
 
 def test_genesis_challenge_malformed_json() -> None:
@@ -218,6 +230,246 @@ def test_genesis_challenge_body_too_large() -> None:
     )
     assert r.status_code == 413
     assert r.json()["code"] == ErrorCode.MESSAGE_TOO_LARGE
+
+
+def _operator_and_org_keys() -> tuple[Ed25519PrivateKey, str, Ed25519PrivateKey, str]:
+    op_priv = Ed25519PrivateKey.from_private_bytes(
+        hashlib.sha256(b"genesis-http-operator").digest(),
+    )
+    org_priv = Ed25519PrivateKey.from_private_bytes(
+        hashlib.sha256(b"genesis-http-org").digest(),
+    )
+    op_pub = op_priv.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    org_pub = org_priv.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    return op_priv, op_pub, org_priv, org_pub
+
+
+def test_genesis_complete_happy_path() -> None:
+    op_priv, op_pub, _org_priv, org_pub = _operator_and_org_keys()
+    t = {"now": 1_700_000_000}
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: t["now"],
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    assert (
+        client.post(
+            "/genesis/challenge/verify",
+            content=json.dumps(
+                {"challenge_id": cid, "signature_hex": sig},
+            ).encode("utf-8"),
+        ).status_code
+        == 200
+    )
+    r3 = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": op_pub,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": org_pub,
+            "operator_display_name": "Chris",
+        },
+    )
+    assert r3.status_code == 200
+    out = r3.json()
+    assert out["code"] == str(SuccessCode.GENESIS_WIZARD_COMPLETED)
+    assert out["payload"]["root_organization_name"] == "modulr"
+    assert out["payload"]["root_organization_resolved_id"] == org_pub
+    assert out["payload"]["operator_display_name"] == "Chris"
+    assert out["payload"]["bootstrap_signing_pubkey_hex"] == op_pub
+    snap = CoreGenesisRepository(conn).get()
+    assert snap.genesis_complete is True
+    assert snap.bootstrap_operator_display_name == "Chris"
+    row = NameBindingsRepository(conn).get_by_name("modulr")
+    assert row is not None
+    assert row["resolved_id"] == org_pub
+
+
+def test_genesis_complete_without_verify_returns_error() -> None:
+    op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_000,
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    r = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": op_pub,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": org_pub,
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == ErrorCode.GENESIS_CHALLENGE_NOT_CONSUMED
+
+
+def test_genesis_complete_second_time_returns_409() -> None:
+    op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
+    t = {"now": 1_700_000_000}
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: t["now"],
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    client.post(
+        "/genesis/challenge/verify",
+        content=json.dumps(
+            {"challenge_id": cid, "signature_hex": sig},
+        ).encode("utf-8"),
+    )
+    complete_body = {
+        "challenge_id": cid,
+        "subject_signing_pubkey_hex": op_pub,
+        "root_organization_name": "modulr",
+        "root_organization_signing_public_key_hex": org_pub,
+    }
+    assert client.post("/genesis/complete", json=complete_body).status_code == 200
+    r2 = client.post("/genesis/complete", json=complete_body)
+    assert r2.status_code == 409
+    assert r2.json()["code"] == ErrorCode.GENESIS_ALREADY_COMPLETE
+
+
+def test_genesis_complete_stale_after_window() -> None:
+    op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
+    t = {"now": 1_700_000_000}
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: t["now"],
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    client.post(
+        "/genesis/challenge/verify",
+        content=json.dumps(
+            {"challenge_id": cid, "signature_hex": sig},
+        ).encode("utf-8"),
+    )
+    t["now"] += 901
+    r = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": op_pub,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": org_pub,
+        },
+    )
+    assert r.status_code == 409
+    assert r.json()["code"] == ErrorCode.GENESIS_COMPLETION_WINDOW_EXPIRED
+
+
+def test_genesis_complete_wrong_subject_pubkey() -> None:
+    op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
+    other_pub = Ed25519PrivateKey.generate().public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    t = {"now": 1_700_000_000}
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: t["now"],
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    client.post(
+        "/genesis/challenge/verify",
+        content=json.dumps(
+            {"challenge_id": cid, "signature_hex": sig},
+        ).encode("utf-8"),
+    )
+    r = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": other_pub,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": org_pub,
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == ErrorCode.GENESIS_OPERATOR_SUBJECT_MISMATCH
+
+
+def test_genesis_complete_invalid_root_label() -> None:
+    op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
+    app = create_app(
+        settings=_settings(),
+        conn=_conn(),
+        clock=lambda: 1_700_000_000,
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    client.post(
+        "/genesis/challenge/verify",
+        content=json.dumps(
+            {"challenge_id": cid, "signature_hex": sig},
+        ).encode("utf-8"),
+    )
+    r = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": op_pub,
+            "root_organization_name": "modulr.network",
+            "root_organization_signing_public_key_hex": org_pub,
+        },
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == ErrorCode.INVALID_NAME
 
 
 def test_genesis_success_envelope_has_protocol_fields() -> None:

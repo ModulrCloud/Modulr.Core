@@ -45,6 +45,7 @@ def test_core_genesis_default_after_migration() -> None:
     assert s.bootstrap_signing_pubkey_hex is None
     assert s.modulr_apex_domain is None
     assert s.instance_id is None
+    assert s.bootstrap_operator_display_name is None
     assert s.updated_at == 0
 
 
@@ -112,6 +113,18 @@ def test_schema_migrations_includes_007() -> None:
         "SELECT 1 FROM schema_migrations WHERE version = 7",
     )
     assert cur.fetchone() is not None
+
+
+def test_schema_migrations_includes_009_operator_display() -> None:
+    """Migration 009 adds ``bootstrap_operator_display_name`` to ``core_genesis``."""
+    conn = _conn()
+    cur = conn.execute("SELECT 1 FROM schema_migrations WHERE version = 9")
+    assert cur.fetchone() is not None
+    cur2 = conn.execute(
+        "PRAGMA table_info(core_genesis)",
+    )
+    cols = {row[1] for row in cur2.fetchall()}
+    assert "bootstrap_operator_display_name" in cols
 
 
 def test_schema_migrations_includes_008_genesis_challenge() -> None:
