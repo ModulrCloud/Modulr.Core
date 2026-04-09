@@ -9,15 +9,16 @@ const nextConfig: NextConfig = {
    * Mitigations (webpack dev only; Turbopack ignores `webpack`):
    * - Poll both client and server compilers (CSS extraction can touch either path).
    * - Higher `aggregateTimeout` batches rapid saves so fewer half-written chunk swaps.
-   * - Optional: `$env:NEXT_WEBPACK_POLL_MS=4000` (PowerShell) if 404s persist (AV / slow disk).
+   * - Optional: `$env:NEXT_WEBPACK_POLL_MS=5000` (PowerShell) if 404s persist (AV / slow disk).
    */
   webpack: (config, { dev }) => {
     if (dev && process.platform === "win32") {
-      const pollMs = Number.parseInt(process.env.NEXT_WEBPACK_POLL_MS ?? "2500", 10);
+      const pollMs = Number.parseInt(process.env.NEXT_WEBPACK_POLL_MS ?? "4000", 10);
       config.watchOptions = {
         ...config.watchOptions,
-        poll: Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 2500,
-        aggregateTimeout: 2000,
+        poll: Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 4000,
+        /** Batch rapid file events so CSS chunk swaps are less likely to 404 mid-write. */
+        aggregateTimeout: 3000,
       };
     }
     return config;

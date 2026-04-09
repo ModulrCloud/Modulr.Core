@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import ipaddress
 import logging
 import os
 import socket
@@ -113,6 +114,67 @@ def _preflight_listen(host: str, port: int) -> None:
         sys.exit(1)
 
 
+def _lan_ipv4_addresses() -> list[str]:
+    """Best-effort non-loopback IPv4 addresses for LAN connection hints."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("10.254.254.254", 1))
+            ip = probe.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                seen.add(ip)
+                found.append(ip)
+        finally:
+            probe.close()
+    except OSError:
+        pass
+
+    try:
+        hn = socket.gethostname()
+        for res in socket.getaddrinfo(hn, None, socket.AF_INET, socket.SOCK_STREAM):
+            ip = res[4][0]
+            if ip.startswith("127.") or ip in seen:
+                continue
+            seen.add(ip)
+            found.append(ip)
+    except OSError:
+        pass
+
+    return sorted(found, key=lambda a: int(ipaddress.IPv4Address(a)))
+
+
+def _print_listen_hints(host: str, port: int, *, https: bool) -> None:
+    """Print human-readable URLs so operators know how to reach Core."""
+    scheme = "https" if https else "http"
+    if host in ("127.0.0.1", "::1"):
+        print(f"modulr-core: {scheme}://127.0.0.1:{port}/ (loopback only)")
+        addrs = _lan_ipv4_addresses()
+        if addrs:
+            print(
+                "  LAN IP(s) on this machine:",
+                ", ".join(addrs),
+                "(use --host 0.0.0.0 so other PCs can connect)",
+            )
+        return
+
+    print(f"modulr-core: {scheme}://127.0.0.1:{port}/ (this machine)")
+    if host in ("0.0.0.0", "::"):
+        addrs = _lan_ipv4_addresses()
+        if addrs:
+            for a in addrs:
+                print(f"  {scheme}://{a}:{port}/ (other devices on your network)")
+        else:
+            print(
+                "  (Could not auto-detect LAN IP; check ipconfig / "
+                "Settings → Network on this host.)",
+            )
+    else:
+        print(f"  {scheme}://{host}:{port}/")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="modulr-core",
@@ -125,7 +187,14 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Path to operator TOML (overrides MODULR_CORE_CONFIG).",
     )
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help=(
+            "Bind address. Default 0.0.0.0 (all interfaces) so other machines on the "
+            "LAN can reach Core; use 127.0.0.1 for this machine only."
+        ),
+    )
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "-v",
@@ -218,6 +287,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.ssl_keyfile is not None:
         ssl_kwargs["ssl_keyfile"] = str(args.ssl_keyfile.resolve())
         ssl_kwargs["ssl_certfile"] = str(args.ssl_certfile.resolve())
+    _print_listen_hints(args.host, args.port, https=bool(ssl_kwargs))
     if args.reload:
         # Uvicorn only enables reload when the app is given as an import string.
         os.environ["MODULR_CORE_CONFIG"] = str(path.resolve())

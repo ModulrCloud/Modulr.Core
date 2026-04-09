@@ -30,6 +30,7 @@ from modulr_core.messages.wire_method_catalog import (
 )
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, connect_memory
+from modulr_core.repositories.core_genesis import CoreGenesisRepository
 from modulr_core.repositories.dial_route_entry import DialRouteEntryRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
 from modulr_core.validation import envelope_signing_bytes, payload_hash
@@ -785,10 +786,14 @@ def test_submit_module_route_core_merge_rejected_without_bootstrap() -> None:
     pk = Ed25519PrivateKey.generate()
     other = Ed25519PrivateKey.generate()
     conn = _conn()
-    other_hex = other.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    other_hex = (
+        other.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     settings = _settings(dev_mode=False, bootstrap_public_keys=(other_hex,))
     submit = make_validated_inbound(
         pk,
@@ -806,13 +811,61 @@ def test_submit_module_route_core_merge_rejected_without_bootstrap() -> None:
     assert ei.value.code is ErrorCode.UNAUTHORIZED
 
 
+def test_core_route_merge_allows_genesis_operator_not_in_toml() -> None:
+    """Genesis operator may merge core dials without duplicating the key in TOML."""
+    pk = Ed25519PrivateKey.generate()
+    other = Ed25519PrivateKey.generate()
+    conn = _conn()
+    other_hex = (
+        other.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    sender_hex = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    grepo = CoreGenesisRepository(conn)
+    grepo.set_bootstrap_signing_pubkey_hex(pubkey_hex=sender_hex, updated_at=1)
+    grepo.set_genesis_complete(complete=True, updated_at=1)
+    conn.commit()
+    settings = _settings(dev_mode=False, bootstrap_public_keys=(other_hex,))
+    dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "submit_module_route",
+            {
+                "module_id": "modulr.core",
+                "route_type": "ip",
+                "route": "127.0.0.1:1",
+                "mode": "merge",
+            },
+            "sm-core-genesis-merge",
+        ),
+        settings=settings,
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+
+
 def test_submit_module_route_core_merge_allowed_for_bootstrap_sender() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    sender_hex = pk.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    sender_hex = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     settings = _settings(dev_mode=False, bootstrap_public_keys=(sender_hex,))
     dispatch_operation(
         make_validated_inbound(
@@ -976,10 +1029,14 @@ def test_remove_module_route_core_rejected_without_bootstrap() -> None:
     pk = Ed25519PrivateKey.generate()
     other = Ed25519PrivateKey.generate()
     conn = _conn()
-    other_hex = other.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    other_hex = (
+        other.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     settings = _settings(dev_mode=False, bootstrap_public_keys=(other_hex,))
     dispatch_operation(
         make_validated_inbound(
@@ -1131,10 +1188,15 @@ def test_submit_module_route_invalid_endpoint_pubkey() -> None:
 def test_submit_module_route_endpoint_pubkey_stored_on_dial() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    epk = Ed25519PrivateKey.generate().public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    epk = (
+        Ed25519PrivateKey.generate()
+        .public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     submit = make_validated_inbound(
         pk,
         "submit_module_route",
@@ -1314,14 +1376,22 @@ def test_submit_module_route_identity_mismatch() -> None:
 def test_register_requires_bootstrap_when_configured() -> None:
     pk = Ed25519PrivateKey.generate()
     other = Ed25519PrivateKey.generate()
-    allowed = other.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    allowed = (
+        other.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     conn = _conn()
-    mod_key = Ed25519PrivateKey.generate().public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
+    mod_key = (
+        Ed25519PrivateKey.generate()
+        .public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
     )
     reg = make_validated_inbound(
         pk,
@@ -2116,10 +2186,14 @@ def test_register_name_conflict() -> None:
 def test_register_name_requires_bootstrap_when_configured() -> None:
     allowed = Ed25519PrivateKey.generate()
     signer = Ed25519PrivateKey.generate()
-    allowed_hex = allowed.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    allowed_hex = (
+        allowed.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     conn = _conn()
     with pytest.raises(WireValidationError) as ei:
         dispatch_operation(

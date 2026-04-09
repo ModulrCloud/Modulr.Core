@@ -863,6 +863,7 @@ def handle_submit_module_route(
         if mode == "merge":
             require_bootstrap_sender(
                 settings=settings,
+                conn=conn,
                 sender_public_key_hex=env["sender_public_key"],
             )
         if mode == "replace_all":
@@ -986,6 +987,7 @@ def handle_remove_module_route(
     if module_id == CANONICAL_CORE_MODULE_NAME:
         require_bootstrap_sender(
             settings=settings,
+            conn=conn,
             sender_public_key_hex=env["sender_public_key"],
         )
         deleted = dial_repo.delete_by_scope_and_dial(
@@ -1075,6 +1077,7 @@ def handle_register_module(
     env = validated.envelope
     require_bootstrap_to_register_module(
         settings=settings,
+        conn=conn,
         sender_public_key_hex=env["sender_public_key"],
     )
     p: dict[str, Any] = env["payload"]
@@ -1383,6 +1386,7 @@ def handle_register_name(
     env = validated.envelope
     require_bootstrap_sender(
         settings=settings,
+        conn=conn,
         sender_public_key_hex=env["sender_public_key"],
     )
     p: dict[str, Any] = env["payload"]
@@ -1441,6 +1445,7 @@ def handle_register_org(
     env = validated.envelope
     require_bootstrap_sender(
         settings=settings,
+        conn=conn,
         sender_public_key_hex=env["sender_public_key"],
     )
     p: dict[str, Any] = env["payload"]

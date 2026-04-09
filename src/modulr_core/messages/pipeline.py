@@ -8,6 +8,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any, NoReturn
 
+from modulr_core.bootstrap_effective import sender_is_effective_bootstrap
 from modulr_core.clock import EpochClock, now_epoch_seconds
 from modulr_core.config.schema import Settings
 from modulr_core.errors.codes import ErrorCode
@@ -34,16 +35,18 @@ from modulr_core.validation import (
     verify_ed25519,
 )
 
-_REQUIRED_STRING_KEYS = frozenset({
-    "protocol_version",
-    "message_id",
-    "target_module",
-    "operation",
-    "sender_id",
-    "sender_key_type",
-    "sender_public_key",
-    "signature_algorithm",
-})
+_REQUIRED_STRING_KEYS = frozenset(
+    {
+        "protocol_version",
+        "message_id",
+        "target_module",
+        "operation",
+        "sender_id",
+        "sender_key_type",
+        "sender_public_key",
+        "signature_algorithm",
+    }
+)
 _REQUIRED_KEYS = _REQUIRED_STRING_KEYS | {
     "timestamp",
     "expires_at",
@@ -165,7 +168,7 @@ def validate_inbound_request(
     except SignatureInvalid as e:
         _fail(str(e), ErrorCode.SIGNATURE_INVALID)
 
-    _enforce_bootstrap(pub_hex, settings)
+    _enforce_bootstrap(pub_hex, settings, conn)
 
     is_replay = _apply_deduplication(
         conn,
@@ -272,11 +275,16 @@ def _parse_instant(value: Any, *, field: str) -> float:
     _fail(f"{field} must be a string or number", ErrorCode.INVALID_FIELD)
 
 
-def _enforce_bootstrap(sender_public_key_hex: str, settings: Settings) -> None:
-    allowed = settings.bootstrap_public_keys
-    if not allowed and settings.dev_mode:
-        return
-    if sender_public_key_hex not in allowed:
+def _enforce_bootstrap(
+    sender_public_key_hex: str,
+    settings: Settings,
+    conn: sqlite3.Connection,
+) -> None:
+    if not sender_is_effective_bootstrap(
+        sender_public_key_hex,
+        settings=settings,
+        conn=conn,
+    ):
         _fail("sender is not authorized (bootstrap policy)", ErrorCode.UNAUTHORIZED)
 
 

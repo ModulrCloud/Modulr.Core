@@ -240,7 +240,7 @@ Use **three terminals**. In each Python terminal, **activate the same venv** fir
 
 | What | Where | One-time setup | Run (typical dev) | URL |
 | ---- | ----- | ---------------- | ------------------- | --- |
-| **Core HTTP server** | Repository root | `pip install -e ".[dev]"` | `modulr-core --reload -v --config dev.toml` | [http://127.0.0.1:8000](http://127.0.0.1:8000) — try `GET /version` |
+| **Core HTTP server** | Repository root | `pip install -e ".[dev]"` | `modulr-core --reload -v --config dev.toml` | This machine: [http://127.0.0.1:8000](http://127.0.0.1:8000); other PCs: `http://<host-LAN-ip>:8000` — try `GET /version` |
 | **Keymaster** (signing UI) | `keymaster/` | `cd keymaster` then `pip install -e ".[dev]"` | `modulr-keymaster --reload` | [http://127.0.0.1:8765](http://127.0.0.1:8765) |
 | **Frontend** (customer UI / viewer) | `frontend/` | `cd frontend` then `npm install` | `npm run dev` | [http://localhost:3000](http://localhost:3000) |
 
@@ -272,11 +272,7 @@ You can also set **`cors_extra_origins`** in **`dev.toml`** (array of full origi
 
 #### LAN / internal network (other PCs on your subnet)
 
-1. **Bind on all interfaces** — by default Core listens on **`127.0.0.1`** only (same machine). For other PCs to reach it, use **`--host 0.0.0.0`**:
-
-```powershell
-modulr-core --reload -v --config dev.toml --host 0.0.0.0 --port 8000
-```
+1. **Bind address** — by default Core listens on **`0.0.0.0`** (all interfaces), so other PCs on the same network can reach **`http://<core-host-LAN-IP>:8000`** without extra flags. To restrict Core to **this machine only** (no LAN exposure), use **`--host 127.0.0.1`**.
 
 2. **CORS** — allow every **Origin** your browsers use (e.g. Next **Network** URL `http://10.0.0.53:3000`). Use **`cors_extra_origins`** in **`[modulr_core]`** (see **`dev.toml`** commented example), **`MODULR_CORE_CORS_EXTRA_ORIGINS`**, or **`MODULR_CORE_CORS_ORIGINS`** to replace the list entirely.
 
@@ -284,7 +280,7 @@ modulr-core --reload -v --config dev.toml --host 0.0.0.0 --port 8000
 
 4. **Firewall** — on the machine running Core, allow inbound TCP on the chosen port (e.g. **8000**).
 
-5. **Scope** — **`dev_mode`** on a LAN is for **trusted lab** use; tighten before any untrusted network.
+5. **Scope** — **`dev_mode`** with the default bind is reachable on your LAN; use **`--host 127.0.0.1`** on untrusted networks or when you do not want the service discoverable from other hosts.
 
 ### Run the HTTP server (local)
 
@@ -297,7 +293,7 @@ modulr-core --config dev.toml
 
 Use **`modulr-core -v --config dev.toml`** when you want each request logged (method, path, `Origin`, status) plus a startup list of routes. **`GET /version` returning 404** almost always means the server process is still on **old code** — stop it and start again (and run **`pip install -e ".[dev]"`** if you pulled changes).
 
-Defaults: **`127.0.0.1:8000`**. Override with `--host` / `--port`. If you see **`ModuleNotFoundError: No module named 'modulr_core'`**, the editable install is missing or the venv is wrong — run **`pip install -e ".[dev]"`** again from this repo’s root.
+Defaults: **`0.0.0.0:8000`** (listen on all interfaces; other PCs use the host’s LAN IP). Use **`--host 127.0.0.1`** for loopback only. Override port with **`--port`**. On startup, the process prints **`127.0.0.1`** and any detected **LAN IPv4** addresses so you can paste the right URL on another device. If you see **`ModuleNotFoundError: No module named 'modulr_core'`**, the editable install is missing or the venv is wrong — run **`pip install -e ".[dev]"`** again from this repo’s root.
 
 A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE_CONFIG`** to a TOML path. If the port is already taken, the CLI exits with a short error before starting uvicorn.
 
