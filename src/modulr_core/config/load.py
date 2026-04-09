@@ -85,6 +85,7 @@ def _settings_from_root(
     dev_mode = _bool_opt(table, "dev_mode", DEFAULT_DEV_MODE, source)
     network_environment = _network_environment_opt(table, source)
     network_name = _network_name_opt(table, source)
+    cors_extra_origins = _cors_extra_origins_opt(table, source)
     if network_environment is NetworkEnvironment.PRODUCTION and dev_mode:
         raise ConfigurationError(
             f'network_environment "production" cannot be combined with dev_mode true '
@@ -154,6 +155,7 @@ def _settings_from_root(
         dev_mode=dev_mode,
         network_environment=network_environment,
         network_name=network_name,
+        cors_extra_origins=cors_extra_origins,
     )
 
 
@@ -223,6 +225,46 @@ def _network_environment_opt(
             f'network_environment must be "local", "testnet", or "production" '
             f"({source})",
         ) from None
+
+
+_MAX_CORS_ORIGIN_LEN = 512
+
+
+def _cors_extra_origins_opt(table: dict[str, Any], source: str) -> tuple[str, ...]:
+    """Parse optional ``cors_extra_origins`` list (browser Origin URLs)."""
+    key = "cors_extra_origins"
+    if key not in table:
+        return ()
+    raw = table[key]
+    if not isinstance(raw, list):
+        raise ConfigurationError(
+            f"cors_extra_origins must be a list of strings ({source})",
+        )
+    seen: set[str] = set()
+    out: list[str] = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, str):
+            raise ConfigurationError(
+                f"cors_extra_origins[{i}] must be a string ({source})",
+            )
+        s = item.strip()
+        if not s:
+            raise ConfigurationError(
+                f"cors_extra_origins[{i}] must be non-empty ({source})",
+            )
+        if len(s) > _MAX_CORS_ORIGIN_LEN:
+            raise ConfigurationError(
+                f"cors_extra_origins[{i}] exceeds maximum length ({source})",
+            )
+        if not (s.startswith("http://") or s.startswith("https://")):
+            raise ConfigurationError(
+                f"cors_extra_origins[{i}] must start with http:// or https:// "
+                f"({source})",
+            )
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return tuple(out)
 
 
 def _network_name_opt(table: dict[str, Any], source: str) -> str:

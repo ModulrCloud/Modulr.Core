@@ -62,17 +62,42 @@ def _log_registered_routes(app: FastAPI) -> None:
 def _cors_allow_origins(settings: Settings) -> list[str]:
     """Origins allowed for browser clients (customer UI, etc.).
 
-    Set :envvar:`MODULR_CORE_CORS_ORIGINS` to a comma-separated list to override.
-    In ``dev_mode`` with no env override, local Next.js defaults are used.
+    Set :envvar:`MODULR_CORE_CORS_ORIGINS` to a comma-separated list to **replace**
+    the entire allowlist (full control).
+
+    Set :envvar:`MODULR_CORE_CORS_EXTRA_ORIGINS` (comma-separated) to **append** to
+    the ``dev_mode`` defaults — use when the Next dev **Network** URL is a LAN IP
+    (e.g. ``http://10.0.0.53:3000``), which is not included by default.
+
+    ``Settings.cors_extra_origins`` from TOML (``cors_extra_origins``) appends the
+    same way (persisted per config file).
+
+    In ``dev_mode`` with no full override, local Next.js defaults are used.
     """
-    raw = os.environ.get("MODULR_CORE_CORS_ORIGINS", "").strip()
-    if raw:
-        return [x.strip() for x in raw.split(",") if x.strip()]
+    full = os.environ.get("MODULR_CORE_CORS_ORIGINS", "").strip()
+    if full:
+        return [x.strip() for x in full.split(",") if x.strip()]
+
+    extra_raw = os.environ.get("MODULR_CORE_CORS_EXTRA_ORIGINS", "").strip()
+    extra_env = (
+        [x.strip() for x in extra_raw.split(",") if x.strip()] if extra_raw else []
+    )
+    extra_toml = list(settings.cors_extra_origins)
+
     if settings.dev_mode:
-        return [
+        base = [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "https://localhost:3000",
+            "https://127.0.0.1:3000",
         ]
+        seen: set[str] = set()
+        out: list[str] = []
+        for o in base + extra_toml + extra_env:
+            if o not in seen:
+                seen.add(o)
+                out.append(o)
+        return out
     return []
 
 

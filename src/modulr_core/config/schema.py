@@ -57,6 +57,12 @@ class Settings:
     network_name: str
     """Custom name for UIs (e.g. chain name). If empty, a tier default is used."""
 
+    cors_extra_origins: tuple[str, ...]
+    """Extra browser ``Origin`` URLs for CORS (e.g. Next on a LAN IP).
+
+    Appended to ``dev_mode`` defaults unless :envvar:`MODULR_CORE_CORS_ORIGINS` replaces
+    the list."""
+
     def genesis_operations_allowed(self) -> bool:
         """True when genesis wizard / reset may run (non-production tiers)."""
         return self.network_environment in (

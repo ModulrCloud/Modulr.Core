@@ -234,6 +234,58 @@ pytest
 
 The importable package is **`modulr_core`**; the protocol module name on the wire remains **`modulr.core`**.
 
+### Quick start: Core, Keymaster, and frontend (after a reboot)
+
+Use **three terminals**. In each Python terminal, **activate the same venv** first (Windows: `.\.venv\Scripts\Activate.ps1` from the repo root). Install **once** per clone; after an overnight reboot you only need to activate the venv and run the commands.
+
+| What | Where | One-time setup | Run (typical dev) | URL |
+| ---- | ----- | ---------------- | ------------------- | --- |
+| **Core HTTP server** | Repository root | `pip install -e ".[dev]"` | `modulr-core --reload -v --config dev.toml` | [http://127.0.0.1:8000](http://127.0.0.1:8000) — try `GET /version` |
+| **Keymaster** (signing UI) | `keymaster/` | `cd keymaster` then `pip install -e ".[dev]"` | `modulr-keymaster --reload` | [http://127.0.0.1:8765](http://127.0.0.1:8765) |
+| **Frontend** (customer UI / viewer) | `frontend/` | `cd frontend` then `npm install` | `npm run dev` | [http://localhost:3000](http://localhost:3000) |
+
+If **`modulr-core`** or **`modulr-keymaster`** is not recognized, the venv is inactive or the editable install was done in a different environment — run `pip install -e ".[dev]"` again from **this repo root** (Core) or from **`keymaster/`** (Keymaster). **`--reload`** restarts the server when Python files change (dev only).
+
+#### HTTPS for Core (match a `https://` frontend)
+
+Browsers block **`http://`** API calls from an **`https://`** page (mixed content). To use **HTTPS** for Core in local dev:
+
+1. Create a **localhost** TLS cert and key (PEM). **[mkcert](https://github.com/FiloSottile/mkcert)** is the usual choice: install the local CA, then e.g. `mkcert localhost 127.0.0.1` to get a cert + key file.
+2. Start Core with **`--ssl-keyfile`** and **`--ssl-certfile`** (both required together):
+
+```powershell
+modulr-core --reload -v --config dev.toml --ssl-keyfile .\localhost+2-key.pem --ssl-certfile .\localhost+2.pem
+```
+
+3. In the **frontend settings**, set the Core endpoint to **`https://127.0.0.1:8000`** (or whatever host/port you use).
+
+With **`dev_mode = true`**, CORS defaults include **`http://` and `https://`** for `localhost:3000` and `127.0.0.1:3000`. If you open the Next dev UI via a **LAN IP** (e.g. **Network: `http://10.0.0.53:3000`**), the browser **Origin** is that URL and Core will block **`fetch`** until you allow it. Append origins without replacing the defaults:
+
+```powershell
+$env:MODULR_CORE_CORS_EXTRA_ORIGINS="http://10.0.0.53:3000"
+modulr-core --reload -v --config dev.toml
+```
+
+Use **`MODULR_CORE_CORS_ORIGINS`** only when you want to **replace** the full allowlist (comma-separated). Restart Core after changing env vars.
+
+You can also set **`cors_extra_origins`** in **`dev.toml`** (array of full origin strings) so LAN URLs are checked in without setting env vars each time.
+
+#### LAN / internal network (other PCs on your subnet)
+
+1. **Bind on all interfaces** — by default Core listens on **`127.0.0.1`** only (same machine). For other PCs to reach it, use **`--host 0.0.0.0`**:
+
+```powershell
+modulr-core --reload -v --config dev.toml --host 0.0.0.0 --port 8000
+```
+
+2. **CORS** — allow every **Origin** your browsers use (e.g. Next **Network** URL `http://10.0.0.53:3000`). Use **`cors_extra_origins`** in **`[modulr_core]`** (see **`dev.toml`** commented example), **`MODULR_CORE_CORS_EXTRA_ORIGINS`**, or **`MODULR_CORE_CORS_ORIGINS`** to replace the list entirely.
+
+3. **Customer UI settings** — from another PC, set the Core base URL to **`http://<core-host-LAN-IP>:8000`**. **`127.0.0.1`** always means “this machine,” not the server.
+
+4. **Firewall** — on the machine running Core, allow inbound TCP on the chosen port (e.g. **8000**).
+
+5. **Scope** — **`dev_mode`** on a LAN is for **trusted lab** use; tighten before any untrusted network.
+
 ### Run the HTTP server (local)
 
 The **`modulr-core`** command only works after the package is installed into your venv. From the **repository root** (with `.venv` activated):
@@ -249,7 +301,7 @@ Defaults: **`127.0.0.1:8000`**. Override with `--host` / `--port`. If you see **
 
 A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE_CONFIG`** to a TOML path. If the port is already taken, the CLI exits with a short error before starting uvicorn.
 
-**Read-only:** **`GET /version`** returns JSON `target_module`, `version`, **`network_environment`** (`local` | `testnet` | `production`, default `production` if omitted in config), **`network_name`** (operator display string — set `network_name` in TOML or get a default like `Modulr (local)`), and **`genesis_operations_allowed`** (boolean; `true` only on `local` / `testnet`). In **`dev_mode`**, CORS allows the local customer UI origins unless **`MODULR_CORE_CORS_ORIGINS`** is set (comma-separated list). **`network_environment = "production"`** cannot be combined with **`dev_mode = true`** (configuration is rejected at startup).
+**Read-only:** **`GET /version`** returns JSON `target_module`, `version`, **`network_environment`** (`local` | `testnet` | `production`, default `production` if omitted in config), **`network_name`** (operator display string — set `network_name` in TOML or get a default like `Modulr (local)`), and **`genesis_operations_allowed`** (boolean; `true` only on `local` / `testnet`). In **`dev_mode`**, CORS allows **`http://` and `https://`** for **`localhost:3000`** and **`127.0.0.1:3000`**, plus **`cors_extra_origins`** from TOML and **`MODULR_CORE_CORS_EXTRA_ORIGINS`** (append). Set **`MODULR_CORE_CORS_ORIGINS`** to replace the entire list (comma-separated). **`network_environment = "production"`** cannot be combined with **`dev_mode = true`** (configuration is rejected at startup).
 
 ### Customer web UI (stage 1)
 

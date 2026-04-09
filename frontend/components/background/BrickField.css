@@ -1,0 +1,145 @@
+.modulr-brick-field {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.modulr-brick-field__hud {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.85rem;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.12rem;
+  text-align: right;
+  line-height: 1;
+}
+
+.modulr-brick-field__score {
+  font-family: var(--font-quantico), ui-sans-serif, sans-serif;
+  font-size: clamp(1.35rem, 3.2vw, 2rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.modulr-brick-field__score-value {
+  display: inline-block;
+  min-width: 2ch;
+}
+
+.modulr-brick-field__score-label {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.modulr-brick-field__mult {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.06rem;
+  margin-top: 0.15rem;
+}
+
+.modulr-brick-field__mult-value {
+  font-family: var(--font-quantico), ui-sans-serif, sans-serif;
+  font-size: clamp(1rem, 2.4vw, 1.45rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.modulr-brick-field__mult-label {
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+@keyframes modulr-brick-mult-pulse {
+  0% {
+    transform: scale(0.88);
+    opacity: 0.65;
+  }
+  55% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.modulr-brick-field__mult--pulse {
+  animation: modulr-brick-mult-pulse 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.modulr-brick-field__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.modulr-brick-field__win {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1.5rem;
+  text-align: center;
+}
+
+.modulr-brick-field__win-title {
+  margin: 0;
+  font-family: var(--font-quantico), ui-sans-serif, sans-serif;
+  font-size: clamp(1.75rem, 5vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  /* Color + glow come from inline styles (current brick / ball palette). */
+}
+
+.modulr-brick-field__win-sub {
+  margin: 0.85rem 0 0;
+  max-width: 18rem;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--modulr-text-muted);
+}
+
+.modulr-brick-field__lose-hint {
+  display: block;
+  margin-top: 0.55rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modulr-brick-field__win-title {
+    text-shadow: none !important;
+  }
+
+  .modulr-brick-field__score {
+    text-shadow: none !important;
+  }
+
+  .modulr-brick-field__mult--pulse {
+    animation: none !important;
+  }
+
+  .modulr-brick-field__mult {
+    text-shadow: none !important;
+  }
+}
