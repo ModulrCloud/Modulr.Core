@@ -429,19 +429,19 @@ export function BrickField({ visible, animate = true, colorMode }: Props) {
       }
     }
 
+    /** Any alive brick whose horizontal span intersects the paddle column (x only).
+     *
+     * Full AABB overlap fails here: the paddle is a short vertical bar that follows the
+     * ball, while bricks fill many rows—bricks can reach the paddle strip in x but sit
+     * above/below the paddle in y, so the loss condition never fired.
+     */
     function anyBrickHitsPaddle(): boolean {
       const pL = paddle.x - paddle.w / 2
-      const pT = paddle.y - paddle.h / 2
-      const pw = paddle.w
-      const ph = paddle.h
+      const pR = pL + paddle.w
       for (const b of bricks) {
         if (!b.alive) continue
-        if (
-          pL < b.x + b.w &&
-          pL + pw > b.x &&
-          pT < b.y + b.h &&
-          pT + ph > b.y
-        ) {
+        const bR = b.x + b.w
+        if (pL < bR && pR > b.x) {
           return true
         }
       }
@@ -471,14 +471,13 @@ export function BrickField({ visible, animate = true, colorMode }: Props) {
       paddle.h = paddleLenFor(newH)
       paddle.y = clamp(paddle.y, paddle.h / 2 + 8, newH - paddle.h / 2 - 8)
       paddle.x = clamp(paddle.x, paddle.w / 2 + 4, newW - paddle.w / 2 - 4)
-      // Scale positions with the view, but keep brick w:h like ``buildBricks`` —
-      // independent sx/sy on w and h stretches bricks when aspect ratio changes.
+      // Scale brick geometry with the same factors as positions (sx on x/w, sy on y/h).
+      // Deriving w only from sy-biased height made columns drift vs x * sx (Codex P2).
       for (const b of bricks) {
         b.x *= sx
         b.y *= sy
-        const nh = Math.max(4, b.h * sy)
-        b.h = nh
-        b.w = brickWidthForRowHeight(nh)
+        b.w = Math.max(2, b.w * sx)
+        b.h = Math.max(4, b.h * sy)
       }
       gameW = newW
       gameH = newH

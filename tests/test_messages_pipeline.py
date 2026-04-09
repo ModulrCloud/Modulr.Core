@@ -16,6 +16,7 @@ from modulr_core import MODULE_VERSION, ErrorCode, WireValidationError
 from modulr_core.config.schema import NetworkEnvironment, Settings
 from modulr_core.messages import ValidatedInbound, validate_inbound_request
 from modulr_core.persistence import apply_migrations, connect_memory
+from modulr_core.repositories.core_genesis import CoreGenesisRepository
 from modulr_core.validation import envelope_signing_bytes, payload_hash
 
 
@@ -283,10 +284,14 @@ def test_unsupported_operation() -> None:
 def test_bootstrap_unauthorized() -> None:
     trusted = Ed25519PrivateKey.generate()
     signer = Ed25519PrivateKey.generate()
-    allowed = trusted.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    allowed = (
+        trusted.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     body = _signed_body(private_key=signer, message_id="msg-deny")
     with pytest.raises(WireValidationError, match="authorized"):
         validate_inbound_request(
@@ -298,6 +303,44 @@ def test_bootstrap_unauthorized() -> None:
             conn=_conn(),
             clock=lambda: 1_700_000_010.0,
         )
+
+
+def test_bootstrap_allows_genesis_operator_not_in_config() -> None:
+    """Post-genesis operator key in DB counts as bootstrap even if omitted from TOML."""
+    trusted = Ed25519PrivateKey.generate()
+    signer = Ed25519PrivateKey.generate()
+    other_hex = (
+        trusted.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    signer_hex = (
+        signer.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    conn = _conn()
+    repo = CoreGenesisRepository(conn)
+    repo.set_bootstrap_signing_pubkey_hex(pubkey_hex=signer_hex, updated_at=1)
+    repo.set_genesis_complete(complete=True, updated_at=1)
+    conn.commit()
+    body = _signed_body(private_key=signer, message_id="msg-genesis-bootstrap")
+    r = validate_inbound_request(
+        body,
+        settings=_settings(
+            bootstrap_public_keys=(other_hex.upper(),),
+            dev_mode=False,
+        ),
+        conn=conn,
+        clock=lambda: 1_700_000_010.0,
+    )
+    assert isinstance(r, ValidatedInbound)
 
 
 def test_message_id_conflict() -> None:

@@ -1,8 +1,11 @@
+import "./nobleSubtleFallback";
+
 import { getPublicKeyAsync, signAsync, utils } from "@noble/ed25519";
 
 import { bytesToHex, hexToBytes32 } from "./bytes";
 import { canonicalJsonStr } from "./canonicalJson";
 import { payloadHash } from "./payloadHash";
+import { randomUuidV4 } from "./randomUuid";
 
 export type SignCoreMessageOpts = {
   protocolVersion: string;
@@ -25,7 +28,7 @@ export async function buildSignedMessageBody(opts: SignCoreMessageOpts): Promise
   const priv = seed ? hexToBytes32(seed) : utils.randomPrivateKey();
   const pub = await getPublicKeyAsync(priv);
   const pubHex = bytesToHex(pub);
-  const messageId = crypto.randomUUID();
+  const messageId = randomUuidV4();
   const now = Date.now() / 1000;
   const payload = opts.payload;
   const ph = await payloadHash(payload);

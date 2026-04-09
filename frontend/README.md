@@ -14,6 +14,10 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Settings persist in `localStorage` under `modulr.customer-ui.settings`.
 
+### Windows: blank page, `layout.css` 404, Fast Refresh loop
+
+The dev server may briefly reference a CSS chunk before webpack finishes writing it, which shows as **`layout.css` … 404** and can leave the page blank while HMR retries. **`npm run dev`** keeps the **`.next`** cache between runs so rebuilds are steadier. If things get stuck: stop the server, run **`npm run dev:clean`** (or delete **`frontend/.next`** manually), then **`npm run dev`** again. If it still happens often, raise polling: **`$env:NEXT_WEBPACK_POLL_MS="5000"`** (PowerShell) before **`npm run dev`**.
+
 ## Typography
 
 Fonts load from **Google Fonts** via `next/font/google`:

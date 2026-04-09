@@ -4,15 +4,15 @@
   "private": true,
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
-    "dev": "npm run clean && next dev",
+    "dev": "next dev",
     "dev:clean": "npm run clean && next dev",
-    "dev:incremental": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "^1.8.0",
     "next": "^15.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
