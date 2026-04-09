@@ -21,6 +21,7 @@ class CoreGenesisSnapshot:
 
     genesis_complete: bool
     bootstrap_signing_pubkey_hex: str | None
+    bootstrap_operator_display_name: str | None
     modulr_apex_domain: str | None
     instance_id: str | None
     updated_at: int
@@ -57,7 +58,8 @@ def _validate_apex_domain(domain: str) -> str:
 class CoreGenesisRepository:
     """Read/update the single ``core_genesis`` row.
 
-    Migration ``007`` seeds the row; ``008`` adds ``instance_id``.
+    Migration ``007`` seeds the row; ``008`` adds ``instance_id``; ``009`` adds
+    ``bootstrap_operator_display_name``.
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -67,6 +69,7 @@ class CoreGenesisRepository:
         cur = self._conn.execute(
             """
             SELECT genesis_complete, bootstrap_signing_pubkey_hex,
+                   bootstrap_operator_display_name,
                    modulr_apex_domain, instance_id, updated_at
             FROM core_genesis
             WHERE singleton = 1
@@ -78,6 +81,8 @@ class CoreGenesisRepository:
         complete = int(row["genesis_complete"]) == 1
         pk = row["bootstrap_signing_pubkey_hex"]
         pk_s = str(pk) if pk is not None else None
+        disp = row["bootstrap_operator_display_name"]
+        disp_s = str(disp).strip() if disp is not None and str(disp).strip() else None
         apex = row["modulr_apex_domain"]
         apex_s = str(apex).strip() if apex is not None and str(apex).strip() else None
         iid = row["instance_id"]
@@ -85,6 +90,7 @@ class CoreGenesisRepository:
         return CoreGenesisSnapshot(
             genesis_complete=complete,
             bootstrap_signing_pubkey_hex=pk_s,
+            bootstrap_operator_display_name=disp_s,
             modulr_apex_domain=apex_s,
             instance_id=iid_s,
             updated_at=int(row["updated_at"]),
@@ -129,6 +135,26 @@ class CoreGenesisRepository:
             WHERE singleton = 1
             """,
             (1 if complete else 0, updated_at),
+        )
+
+    def set_bootstrap_operator_display_name(
+        self,
+        *,
+        display_name: str | None,
+        updated_at: int,
+    ) -> None:
+        """Set optional wizard display name for the bootstrap operator (UTF-8 text)."""
+        if display_name is not None and len(display_name) > 256:
+            raise ValueError(
+                "bootstrap_operator_display_name must be at most 256 characters",
+            )
+        self._conn.execute(
+            """
+            UPDATE core_genesis
+            SET bootstrap_operator_display_name = ?, updated_at = ?
+            WHERE singleton = 1
+            """,
+            (display_name, updated_at),
         )
 
     def set_bootstrap_signing_pubkey_hex(

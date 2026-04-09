@@ -1,0 +1,200 @@
+"""Finalize genesis: bind root org name, operator + org keys, ``genesis_complete``."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from typing import Any
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from modulr_core.repositories.core_genesis import CoreGenesisRepository
+from modulr_core.repositories.genesis_challenge import GenesisChallengeRepository
+from modulr_core.repositories.name_bindings import NameBindingsRepository
+from modulr_core.validation.hex_codec import InvalidHexEncoding, decode_hex_fixed
+
+# Max seconds after challenge consume during which ``complete`` is allowed.
+GENESIS_COMPLETION_WINDOW_SECONDS = 900
+
+_ROOT_LABEL_RE = re.compile(
+    r"^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])$",
+)
+
+
+class GenesisCompletionError(Exception):
+    """Invalid completion request or inconsistent genesis state."""
+
+
+def validate_genesis_root_organization_label(raw: str) -> str:
+    """
+    Normalize and validate a single DNS label for the genesis root org name.
+
+    Examples: ``modulr`` — no dots; not the same rule as ``register_org`` dotted
+    domains.
+
+    Args:
+        raw: Operator-supplied root organization label.
+
+    Returns:
+        Lowercased label string.
+
+    Raises:
+        GenesisCompletionError: If the label is empty, too long, or not a valid
+            single label.
+    """
+    s = raw.strip().lower()
+    if not s:
+        raise GenesisCompletionError("root_organization_name must be non-empty")
+    if len(s) > 63:
+        raise GenesisCompletionError(
+            "root_organization_name must be at most 63 characters",
+        )
+    if not _ROOT_LABEL_RE.match(s):
+        raise GenesisCompletionError(
+            "root_organization_name must be a single DNS label "
+            "(e.g. modulr): letters, digits, interior hyphens only; no dots",
+        )
+    return s
+
+
+def _normalize_ed25519_pubkey_hex(raw: str) -> str:
+    s = raw.strip().lower()
+    try:
+        decode_hex_fixed(s, byte_length=32)
+    except InvalidHexEncoding as e:
+        raise GenesisCompletionError(
+            "root_organization_signing_public_key_hex must be a valid "
+            f"lowercase Ed25519 public key (64 hex chars): {e}",
+        ) from e
+    try:
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(s))
+    except ValueError as e:
+        raise GenesisCompletionError(
+            "invalid Ed25519 public key for organization",
+        ) from e
+    return s
+
+
+def _validate_operator_display_name(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise GenesisCompletionError("operator_display_name must be a string or null")
+    s = raw.strip()
+    if not s:
+        return None
+    if len(s) > 256:
+        raise GenesisCompletionError(
+            "operator_display_name must be at most 256 characters",
+        )
+    return s
+
+
+def _binding_matches_existing(
+    row: dict[str, Any],
+    *,
+    resolved_id: str,
+) -> bool:
+    rj = row.get("route_json")
+    mj = row.get("metadata_json")
+    rj_n = None if rj in (None, "") else str(rj)
+    mj_n = None if mj in (None, "") else str(mj)
+    return (
+        str(row["resolved_id"]) == resolved_id
+        and rj_n is None
+        and mj_n is None
+    )
+
+
+def complete_genesis(
+    *,
+    genesis_repo: CoreGenesisRepository,
+    challenge_repo: GenesisChallengeRepository,
+    name_repo: NameBindingsRepository,
+    clock: Callable[[], int],
+    challenge_id: str,
+    subject_signing_pubkey_hex: str,
+    root_organization_name: str,
+    root_organization_signing_public_key_hex: str,
+    operator_display_name: str | None,
+) -> None:
+    """
+    Atomically complete the genesis wizard (caller commits).
+
+    Requires a consumed challenge for ``subject_signing_pubkey_hex`` within
+    :data:`GENESIS_COMPLETION_WINDOW_SECONDS` after consume. Binds the root
+    org name to the organization signing public key (``resolved_id``), stores
+    the bootstrap operator key, optional display name, and sets
+    ``genesis_complete``.
+
+    Args:
+        genesis_repo: Singleton ``core_genesis`` row.
+        challenge_repo: ``genesis_challenge`` rows.
+        name_repo: ``name_bindings`` repository.
+        clock: Unix seconds callable.
+        challenge_id: 64-hex challenge id from verify step.
+        subject_signing_pubkey_hex: Operator key (must match consumed
+            challenge).
+        root_organization_name: Single-label root org (e.g. ``modulr``).
+        root_organization_signing_public_key_hex: Org Ed25519 public key hex;
+            stored as ``name_bindings.resolved_id``.
+        operator_display_name: Optional operator display string (e.g. ``Chris``).
+
+    Raises:
+        GenesisCompletionError: Validation or state errors.
+    """
+    snap = genesis_repo.get()
+    if snap.genesis_complete:
+        raise GenesisCompletionError("genesis already complete")
+
+    cid = challenge_id.strip().lower()
+    if len(cid) != 64 or any(c not in "0123456789abcdef" for c in cid):
+        raise GenesisCompletionError("invalid challenge_id")
+
+    row = challenge_repo.get_by_id(cid)
+    if row is None:
+        raise GenesisCompletionError("unknown challenge_id")
+    if row.consumed_at is None:
+        raise GenesisCompletionError(
+            "challenge not verified; call POST /genesis/challenge/verify first",
+        )
+
+    subj = subject_signing_pubkey_hex.strip().lower()
+    if subj != row.subject_signing_pubkey_hex:
+        raise GenesisCompletionError(
+            "subject_signing_pubkey_hex does not match the verified challenge",
+        )
+
+    now = int(clock())
+    if now - int(row.consumed_at) > GENESIS_COMPLETION_WINDOW_SECONDS:
+        raise GenesisCompletionError(
+            "genesis completion window expired; verify the challenge again",
+        )
+
+    root_label = validate_genesis_root_organization_label(root_organization_name)
+    org_resolved_id = _normalize_ed25519_pubkey_hex(
+        root_organization_signing_public_key_hex,
+    )
+    display = _validate_operator_display_name(operator_display_name)
+
+    existing = name_repo.get_by_name(root_label)
+    if existing is not None:
+        if not _binding_matches_existing(existing, resolved_id=org_resolved_id):
+            raise GenesisCompletionError(
+                "root organization name is already bound to different data",
+            )
+    else:
+        name_repo.insert(
+            name=root_label,
+            resolved_id=org_resolved_id,
+            route_json=None,
+            metadata_json=None,
+            created_at=now,
+        )
+
+    genesis_repo.set_bootstrap_signing_pubkey_hex(pubkey_hex=subj, updated_at=now)
+    genesis_repo.set_bootstrap_operator_display_name(
+        display_name=display,
+        updated_at=now,
+    )
+    genesis_repo.set_genesis_complete(complete=True, updated_at=now)
