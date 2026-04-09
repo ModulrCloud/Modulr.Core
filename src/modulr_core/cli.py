@@ -142,7 +142,45 @@ def main(argv: list[str] | None = None) -> None:
             "efficient file watching."
         ),
     )
+    parser.add_argument(
+        "--ssl-keyfile",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "PEM private key for HTTPS. Use with --ssl-certfile "
+            "(e.g. certs from mkcert)."
+        ),
+    )
+    parser.add_argument(
+        "--ssl-certfile",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="PEM certificate for HTTPS. Use with --ssl-keyfile.",
+    )
     args = parser.parse_args(argv)
+
+    if (args.ssl_keyfile is None) ^ (args.ssl_certfile is None):
+        print(
+            "error: --ssl-keyfile and --ssl-certfile must be passed together "
+            "(or omit both for HTTP).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if args.ssl_keyfile is not None:
+        if not args.ssl_keyfile.is_file():
+            print(
+                f"error: --ssl-keyfile is not a file: {args.ssl_keyfile}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not args.ssl_certfile.is_file():
+            print(
+                f"error: --ssl-certfile is not a file: {args.ssl_certfile}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     if args.verbose:
         os.environ["MODULR_CORE_VERBOSE"] = "1"
@@ -176,6 +214,10 @@ def main(argv: list[str] | None = None) -> None:
 
     _preflight_listen(args.host, args.port)
     log_level = "debug" if args.verbose else "info"
+    ssl_kwargs: dict[str, str] = {}
+    if args.ssl_keyfile is not None:
+        ssl_kwargs["ssl_keyfile"] = str(args.ssl_keyfile.resolve())
+        ssl_kwargs["ssl_certfile"] = str(args.ssl_certfile.resolve())
     if args.reload:
         # Uvicorn only enables reload when the app is given as an import string.
         os.environ["MODULR_CORE_CONFIG"] = str(path.resolve())
@@ -188,6 +230,7 @@ def main(argv: list[str] | None = None) -> None:
             log_level=log_level,
             reload=True,
             reload_dirs=reload_dirs,
+            **ssl_kwargs,
         )
     else:
         uvicorn.run(
@@ -195,6 +238,7 @@ def main(argv: list[str] | None = None) -> None:
             host=args.host,
             port=args.port,
             log_level=log_level,
+            **ssl_kwargs,
         )
 
 

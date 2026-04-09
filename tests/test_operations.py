@@ -47,6 +47,7 @@ def _settings(**overrides: Any) -> Settings:
         dev_mode=True,
         network_environment=NetworkEnvironment.LOCAL,
         network_name="",
+        cors_extra_origins=(),
     )
     return replace(base, **overrides)
 

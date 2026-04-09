@@ -7,3 +7,5 @@ network_environment = "local"
 # Optional human label for UIs and GET /version (like an Ethereum network name).
 # network_name = "Modulr Dev"
 bootstrap_public_keys = []
+# LAN / Next "Network" URL: browser Origin must be allowed for CORS (see README).
+cors_extra_origins = [ "http://10.0.0.53:3000" ]

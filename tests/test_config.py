@@ -48,6 +48,7 @@ bootstrap_public_keys = ["{k}"]
     assert s.dev_mode is DEFAULT_DEV_MODE
     assert s.network_environment is NetworkEnvironment.PRODUCTION
     assert s.network_name == ""
+    assert s.cors_extra_origins == ()
     assert s.genesis_operations_allowed() is False
     assert s.resolved_network_display_name() == "Modulr (production)"
 
@@ -80,6 +81,36 @@ network_name = "Holesky-style"
     assert s.network_name == "Holesky-style"
     assert s.genesis_operations_allowed() is True
     assert s.resolved_network_display_name() == "Holesky-style"
+
+
+def test_cors_extra_origins_from_toml() -> None:
+    k = _valid_hex_pubkey()
+    s = load_settings_from_str(
+        f"""
+[modulr_core]
+bootstrap_public_keys = ["{k}"]
+cors_extra_origins = [
+  "http://10.0.0.53:3000",
+  "https://10.0.0.53:3000",
+]
+""",
+    )
+    assert s.cors_extra_origins == (
+        "http://10.0.0.53:3000",
+        "https://10.0.0.53:3000",
+    )
+
+
+def test_cors_extra_origins_rejects_bad_scheme() -> None:
+    k = _valid_hex_pubkey()
+    with pytest.raises(ConfigurationError, match="http:// or https://"):
+        load_settings_from_str(
+            f"""
+[modulr_core]
+bootstrap_public_keys = ["{k}"]
+cors_extra_origins = [ "ftp://bad.example" ]
+""",
+        )
 
 
 def test_dev_mode_allows_empty_bootstrap() -> None:
