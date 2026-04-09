@@ -176,9 +176,19 @@ def _print_listen_hints(host: str, port: int, *, https: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "genesis":
+        from modulr_core.genesis.cli import genesis_main
+
+        genesis_main(argv[1:])
+        return
+
     parser = argparse.ArgumentParser(
         prog="modulr-core",
-        description="Modulr.Core HTTP server (FastAPI + uvicorn).",
+        description=(
+            "Modulr.Core: HTTP server (default), or ``modulr-core genesis …`` for "
+            "local genesis wizard steps."
+        ),
     )
     parser.add_argument(
         "--config",
