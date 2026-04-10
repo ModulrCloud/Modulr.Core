@@ -329,6 +329,7 @@ def test_get_version() -> None:
     assert data["network_environment"] == "testnet"
     assert data["network_name"] == "Modulr Test"
     assert data["genesis_operations_allowed"] is True
+    assert data["genesis_complete"] is False
 
 
 def test_get_version_production_no_genesis() -> None:
@@ -351,6 +352,7 @@ def test_get_version_production_no_genesis() -> None:
     assert data["network_environment"] == "production"
     assert data["genesis_operations_allowed"] is False
     assert data["network_name"] == "Modulr (production)"
+    assert data["genesis_complete"] is False
 
 
 def test_post_message_get_protocol_version() -> None:

@@ -11,6 +11,8 @@ export type CoreVersionJson = {
   /** Resolved display label (custom `network_name` in TOML or tier default). */
   network_name?: string;
   genesis_operations_allowed?: boolean;
+  /** When present, whether first-boot genesis wizard has finished (Core DB). */
+  genesis_complete?: boolean;
 };
 
 export async function fetchCoreVersion(baseUrl: string): Promise<CoreVersionJson> {
@@ -43,12 +45,15 @@ export async function fetchCoreVersion(baseUrl: string): Promise<CoreVersionJson
     typeof o.genesis_operations_allowed === "boolean"
       ? o.genesis_operations_allowed
       : undefined;
+  const genesis_complete =
+    typeof o.genesis_complete === "boolean" ? o.genesis_complete : undefined;
   return {
     version,
     target_module,
     network_environment,
     network_name,
     genesis_operations_allowed,
+    genesis_complete,
   };
 }
 

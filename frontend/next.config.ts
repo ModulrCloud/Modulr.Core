@@ -2,22 +2,29 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
-   * Windows dev: native file watchers can fire before CSS chunks are fully written,
-   * so the browser sometimes requests a stale `/_next/static/css/app/layout.css?…`
-   * and gets 404 → blank / broken UI until a manual restart.
+   * Windows dev: `npm run dev` defaults to **Turbopack** (`--turbo`) to avoid a webpack
+   * race where `/_next/static/css/app/layout.css` 404s and Fast Refresh retries in a loop.
    *
-   * Mitigations (webpack dev only; Turbopack ignores `webpack`):
-   * - Poll both client and server compilers (CSS extraction can touch either path).
-   * - Higher `aggregateTimeout` batches rapid saves so fewer half-written chunk swaps.
-   * - Optional: `$env:NEXT_WEBPACK_POLL_MS=5000` (PowerShell) if 404s persist (AV / slow disk).
+   * Use `npm run dev:webpack` only if you need the webpack dev server; then these apply:
+   * - Poll + `aggregateTimeout` batch rapid saves so fewer half-written CSS chunk swaps.
+   * - Ignore `.next` in the watcher so compiler output does not re-trigger builds.
+   * - Optional: `$env:NEXT_WEBPACK_POLL_MS="5000"` (PowerShell) if 404s persist (AV / slow disk).
    */
   webpack: (config, { dev }) => {
     if (dev && process.platform === "win32") {
       const pollMs = Number.parseInt(process.env.NEXT_WEBPACK_POLL_MS ?? "4000", 10);
+      const wo = { ...(config.watchOptions ?? {}) };
+      const dotNext = "**/.next/**";
+      if (wo.ignored === undefined) {
+        wo.ignored = [dotNext];
+      } else if (Array.isArray(wo.ignored)) {
+        wo.ignored = wo.ignored.includes(dotNext) ? wo.ignored : [...wo.ignored, dotNext];
+      } else {
+        wo.ignored = [wo.ignored, dotNext];
+      }
       config.watchOptions = {
-        ...config.watchOptions,
+        ...wo,
         poll: Number.isFinite(pollMs) && pollMs > 0 ? pollMs : 4000,
-        /** Batch rapid file events so CSS chunk swaps are less likely to 404 mid-write. */
         aggregateTimeout: 3000,
       };
     }

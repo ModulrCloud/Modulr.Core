@@ -180,12 +180,16 @@ def create_app(
     async def get_version() -> dict[str, Any]:
         """Read-only metadata for connectivity checks (no signed envelope)."""
         s = app.state.settings
+        with app.state.conn_lock:
+            snap = CoreGenesisRepository(app.state.conn).get()
+            genesis_complete = bool(snap.genesis_complete)
         return {
             "target_module": TARGET_MODULE_CORE,
             "version": MODULE_VERSION,
             "network_environment": s.network_environment.value,
             "network_name": s.resolved_network_display_name(),
             "genesis_operations_allowed": s.genesis_operations_allowed(),
+            "genesis_complete": genesis_complete,
         }
 
     @app.post("/message")
