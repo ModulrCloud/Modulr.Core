@@ -159,14 +159,19 @@ export function GenesisNoticeModal({
   }, [operatorPubkeyHex, open, resetGenesisChallengeState]);
 
   useEffect(() => {
-    if (currentStep !== 4 || genesisChallengeExpiresAtUnix == null || genesisChallengeVerified) {
+    if (
+      !open ||
+      currentStep !== 4 ||
+      genesisChallengeExpiresAtUnix == null ||
+      genesisChallengeVerified
+    ) {
       return;
     }
     const id = window.setInterval(() => {
       setChallengeCountdownTick((t) => t + 1);
     }, 1000);
     return () => window.clearInterval(id);
-  }, [currentStep, genesisChallengeExpiresAtUnix, genesisChallengeVerified]);
+  }, [open, currentStep, genesisChallengeExpiresAtUnix, genesisChallengeVerified]);
 
   useEffect(() => {
     return () => {
@@ -272,10 +277,6 @@ export function GenesisNoticeModal({
       setGenesisStep4Error(
         "Signature must be 128 hex characters (64 bytes). Remove spaces or line breaks if you pasted from Keymaster.",
       );
-      return;
-    }
-    if (challengeExpired) {
-      setGenesisStep4Error("This challenge has expired. Issue a new challenge.");
       return;
     }
     setGenesisStep4Error(null);
@@ -591,7 +592,9 @@ export function GenesisNoticeModal({
                     {genesisChallengeVerified ? (
                       <span className="font-medium text-emerald-400/90">Challenge verified.</span>
                     ) : challengeExpired ? (
-                      <span className="font-medium text-amber-400/90">Expired — issue a new challenge.</span>
+                      <span className="font-medium text-amber-400/90">
+                        Expired (this device&apos;s clock) — you can still verify; Core decides.
+                      </span>
                     ) : (
                       <>
                         Expires in{" "}
@@ -655,7 +658,7 @@ export function GenesisNoticeModal({
                     onChange={(e) => setGenesisChallengeSignatureHex(e.target.value)}
                     rows={3}
                     spellCheck={false}
-                    disabled={challengeExpired || genesisVerifyLoading}
+                    disabled={genesisVerifyLoading}
                     className={`${inputCls} font-mono text-xs leading-relaxed`}
                     placeholder="128 hex characters from Keymaster"
                   />
@@ -664,14 +667,12 @@ export function GenesisNoticeModal({
                     disabled={
                       genesisOpsBlocked ||
                       genesisVerifyLoading ||
-                      challengeExpired ||
                       genesisChallengeSignatureHex.replace(/[^0-9a-fA-F]/g, "").length < 128
                     }
                     onClick={handleGenesisVerifyChallenge}
                     className={
                       genesisOpsBlocked ||
                       genesisVerifyLoading ||
-                      challengeExpired ||
                       genesisChallengeSignatureHex.replace(/[^0-9a-fA-F]/g, "").length < 128
                         ? "rounded-lg border border-[var(--modulr-glass-border)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--modulr-text-muted)] opacity-50 cursor-not-allowed"
                         : "rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/25"
