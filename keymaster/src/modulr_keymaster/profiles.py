@@ -151,6 +151,18 @@ def rename_profile_in_list(
     return False
 
 
+def normalize_pasted_challenge_for_signing(text: str) -> str:
+    """Make pasted challenge text match what Core stores before signing.
+
+    - **Line endings:** Core uses Unix ``\\n`` only (``"\\n".join(lines)"``). On Windows,
+      copying from a browser textarea often puts ``\\r\\n`` on the clipboard, which changes
+      the signed UTF-8 bytes and breaks verification.
+    - **Trailing junk:** HTML textareas often add a trailing newline or spaces after paste.
+    """
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text.rstrip("\r\n\t ")
+
+
 def sign_challenge_utf8(private_key: Ed25519PrivateKey, text: str) -> bytes:
     """Sign UTF-8 bytes of ``text`` (genesis / admin challenges, interim rule)."""
     raw = text.encode("utf-8")

@@ -62,6 +62,12 @@ export type MethodDef = {
   params: MethodParam[];
 };
 
+/**
+ * Planned wire surface (not implemented in Core yet): **module branding** — let
+ * module creators attach a logo for explorers / shell (format policy TBD; SVG is a
+ * strong default). Tracked in the repo README section “Planned: module branding”.
+ */
+
 export const METHOD_CATALOG: MethodDef[] = [
   {
     id: "get_protocol_version",

@@ -15,6 +15,95 @@ export type CoreVersionJson = {
   genesis_complete?: boolean;
 };
 
+/** Success payload from `POST /genesis/challenge` (unsigned envelope). */
+export type GenesisChallengeIssuedPayload = {
+  challenge_id: string;
+  challenge_body: string;
+  issued_at_unix: number;
+  expires_at_unix: number;
+};
+
+function parseGenesisUnsignedSuccess(
+  data: Record<string, unknown>,
+  httpOk: boolean,
+): Record<string, unknown> {
+  if (data.status !== "success" || !httpOk) {
+    const detail = typeof data.detail === "string" && data.detail ? data.detail : "Request failed";
+    throw new Error(detail);
+  }
+  const payload = data.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Invalid Core response: missing payload");
+  }
+  return payload as Record<string, unknown>;
+}
+
+/**
+ * Issue a genesis challenge bound to the operator Ed25519 public key (unsigned JSON).
+ */
+export async function postGenesisChallenge(
+  baseUrl: string,
+  subject_signing_pubkey_hex: string,
+): Promise<GenesisChallengeIssuedPayload> {
+  const base = primaryCoreBaseUrl([baseUrl]);
+  if (!base) {
+    throw new Error("Core base URL is empty");
+  }
+  const res = await fetch(`${base}/genesis/challenge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subject_signing_pubkey_hex }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`Core returned non-JSON (${res.status})`);
+  }
+  const payload = parseGenesisUnsignedSuccess(data, res.ok);
+  const challenge_id = payload.challenge_id;
+  const challenge_body = payload.challenge_body;
+  const issued_at_unix = payload.issued_at_unix;
+  const expires_at_unix = payload.expires_at_unix;
+  if (
+    typeof challenge_id !== "string" ||
+    typeof challenge_body !== "string" ||
+    typeof issued_at_unix !== "number" ||
+    typeof expires_at_unix !== "number"
+  ) {
+    throw new Error("Invalid genesis challenge response shape");
+  }
+  return { challenge_id, challenge_body, issued_at_unix, expires_at_unix };
+}
+
+/**
+ * Verify Ed25519 signature over the challenge body and consume the challenge (one shot).
+ */
+export async function postGenesisChallengeVerify(
+  baseUrl: string,
+  challenge_id: string,
+  signature_hex: string,
+): Promise<void> {
+  const base = primaryCoreBaseUrl([baseUrl]);
+  if (!base) {
+    throw new Error("Core base URL is empty");
+  }
+  const res = await fetch(`${base}/genesis/challenge/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challenge_id, signature_hex }),
+  });
+  const text = await res.text();
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`Core returned non-JSON (${res.status})`);
+  }
+  parseGenesisUnsignedSuccess(data, res.ok);
+}
+
 export async function fetchCoreVersion(baseUrl: string): Promise<CoreVersionJson> {
   const base = primaryCoreBaseUrl([baseUrl]);
   if (!base) {

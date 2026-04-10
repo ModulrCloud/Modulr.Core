@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Total wizard steps. Steps 1–2 are forms; 3–4 reserved for challenge / verify / complete. */
-export const GENESIS_WIZARD_STEP_COUNT = 4;
+import {
+  postGenesisChallenge,
+  postGenesisChallengeVerify,
+} from "@/lib/coreApi";
+import { formatClientError } from "@/lib/formatClientError";
+
+/**
+ * 1 intro · 2 root org + logo · 3 username + pubkey · 4 challenge · 5 complete (TBD wire).
+ */
+export const GENESIS_WIZARD_STEP_COUNT = 5;
 
 function formatNetworkEnv(env: string | undefined): string {
   if (!env) return "Unknown";
@@ -13,32 +22,6 @@ function formatNetworkEnv(env: string | undefined): string {
     production: "Production",
   };
   return m[env] ?? env;
-}
-
-/**
- * Single network line for the header — avoids "Modulr (local) (local)" when Core
- * already embeds the tier in `network_name`.
- */
-function formatNetworkHeaderLine(
-  networkEnvironment: string | undefined,
-  networkDisplayName: string | undefined,
-): string {
-  const env = networkEnvironment?.trim();
-  const display = networkDisplayName?.trim();
-  if (!env && !display) return "Unknown";
-  if (!env) return display ?? "Unknown";
-  if (!display) return formatNetworkEnv(env);
-
-  const d = display.toLowerCase();
-  const e = env.toLowerCase();
-  const envInParens = `(${e})`;
-  const alreadyHasTier =
-    d.includes(envInParens) ||
-    d === e ||
-    d === formatNetworkEnv(networkEnvironment).toLowerCase();
-
-  if (alreadyHasTier) return display;
-  return `${display} (${env})`;
 }
 
 /** Matches Core `validate_genesis_root_organization_label` (single segment, max length). */
@@ -51,23 +34,108 @@ const inputCls =
 type Props = {
   open: boolean;
   onDismiss: () => void;
-  /** From Core `GET /version` (`network_environment`, `network_name`). */
+  /** From Core `GET /version` → `network_environment` (`local` | `testnet` | `production`). */
   networkEnvironment?: string;
-  networkDisplayName?: string;
+  /** Primary Core base URL (Settings) for `POST /genesis/challenge` and `…/verify`. */
+  coreBaseUrl?: string;
+  /** When `false`, genesis HTTP routes return 403 — step 4 cannot issue or verify. */
+  genesisOperationsAllowed?: boolean;
 };
+
+function formatChallengeRemaining(sec: number): string {
+  if (sec <= 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Clipboard API is only available in secure contexts (HTTPS or http://localhost).
+ * On plain HTTP with another host (e.g. LAN IP), `navigator.clipboard` is undefined — use fallback.
+ */
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      /* fall through to execCommand (e.g. permission denied) */
+    }
+  }
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is not available in this environment.");
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  ta.style.top = "0";
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    const ok = document.execCommand("copy");
+    if (!ok) {
+      throw new Error(
+        "Could not copy automatically. Select the challenge text and press Ctrl+C (Cmd+C on Mac).",
+      );
+    }
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
 
 /** Genesis wizard when Core reports `genesis_complete: false` (lab / first boot). */
 export function GenesisNoticeModal({
   open,
   onDismiss,
   networkEnvironment,
-  networkDisplayName,
+  coreBaseUrl,
+  genesisOperationsAllowed,
 }: Props) {
   const [currentStep, setCurrentStep] = useState(1);
   /** Display label for this network / root org (wired to complete later). */
   const [networkLabel, setNetworkLabel] = useState("Modulr");
   const [operatorPubkeyHex, setOperatorPubkeyHex] = useState("");
   const [operatorDisplayName, setOperatorDisplayName] = useState("");
+  /** Ed25519 hex for `root_organization_signing_public_key_hex` on complete (often same as username key). */
+  const [orgSigningPubkeyHex, setOrgSigningPubkeyHex] = useState("");
+  /** Step 4 — `POST /genesis/challenge` + verify (consumed challenge id kept for step 5 / complete). */
+  const [genesisChallengeId, setGenesisChallengeId] = useState<string | null>(null);
+  const [genesisChallengeBody, setGenesisChallengeBody] = useState("");
+  const [genesisChallengeExpiresAtUnix, setGenesisChallengeExpiresAtUnix] = useState<number | null>(
+    null,
+  );
+  const [genesisChallengeSignatureHex, setGenesisChallengeSignatureHex] = useState("");
+  const [genesisChallengeVerified, setGenesisChallengeVerified] = useState(false);
+  const [genesisIssueLoading, setGenesisIssueLoading] = useState(false);
+  const [genesisVerifyLoading, setGenesisVerifyLoading] = useState(false);
+  const [genesisStep4Error, setGenesisStep4Error] = useState<string | null>(null);
+  const [challengeCountdownTick, setChallengeCountdownTick] = useState(0);
+  /** Brief UX after Copy body succeeds. */
+  const [challengeBodyCopyFeedback, setChallengeBodyCopyFeedback] = useState(false);
+  /** Optional SVG logo for the root org — preview only until wire/storage exists. */
+  const [networkLogoObjectUrl, setNetworkLogoObjectUrl] = useState<string | null>(null);
+  const [networkLogoFileName, setNetworkLogoFileName] = useState<string | null>(null);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const challengeBodyCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetGenesisChallengeState = useCallback(() => {
+    setGenesisChallengeId(null);
+    setGenesisChallengeBody("");
+    setGenesisChallengeExpiresAtUnix(null);
+    setGenesisChallengeSignatureHex("");
+    setGenesisChallengeVerified(false);
+    setGenesisIssueLoading(false);
+    setGenesisVerifyLoading(false);
+    setGenesisStep4Error(null);
+    setChallengeBodyCopyFeedback(false);
+    if (challengeBodyCopyTimerRef.current) {
+      clearTimeout(challengeBodyCopyTimerRef.current);
+      challengeBodyCopyTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -75,11 +143,49 @@ export function GenesisNoticeModal({
     setNetworkLabel("Modulr");
     setOperatorPubkeyHex("");
     setOperatorDisplayName("");
-  }, [open]);
+    setOrgSigningPubkeyHex("");
+    resetGenesisChallengeState();
+    setNetworkLogoObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setNetworkLogoFileName(null);
+    if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+  }, [open, resetGenesisChallengeState]);
+
+  useEffect(() => {
+    if (!open) return;
+    resetGenesisChallengeState();
+  }, [operatorPubkeyHex, open, resetGenesisChallengeState]);
+
+  useEffect(() => {
+    if (currentStep !== 4 || genesisChallengeExpiresAtUnix == null || genesisChallengeVerified) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setChallengeCountdownTick((t) => t + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [currentStep, genesisChallengeExpiresAtUnix, genesisChallengeVerified]);
+
+  useEffect(() => {
+    return () => {
+      if (challengeBodyCopyTimerRef.current) {
+        clearTimeout(challengeBodyCopyTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!open) return null;
 
-  const networkLine = formatNetworkHeaderLine(networkEnvironment, networkDisplayName);
+  /** Tier only — same source as CLI/config `network_environment` on `GET /version`. */
+  const networkModeLabel = formatNetworkEnv(networkEnvironment);
+  /** Shown in copy — updates as the user edits the root organization name field. */
+  const rootOrgDisplayName = networkLabel.trim() || "Modulr";
+  /** Core rejects ``.`` in root org name (single segment only). */
+  const rootOrgNameHasDot = networkLabel.includes(".");
+  const step3BothFilled =
+    operatorPubkeyHex.trim().length > 0 && operatorDisplayName.trim().length > 0;
 
   function goBack() {
     setCurrentStep((s) => Math.max(1, s - 1));
@@ -89,8 +195,125 @@ export function GenesisNoticeModal({
     setCurrentStep((s) => Math.min(GENESIS_WIZARD_STEP_COUNT, s + 1));
   }
 
+  function onNetworkLogoFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const okType =
+      file.type === "image/svg+xml" ||
+      file.type === "image/svg" ||
+      file.name.toLowerCase().endsWith(".svg");
+    if (!okType) {
+      e.target.value = "";
+      return;
+    }
+    setNetworkLogoObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+    setNetworkLogoFileName(file.name);
+  }
+
+  function clearNetworkLogo() {
+    setNetworkLogoObjectUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    setNetworkLogoFileName(null);
+    if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+  }
+
+  const coreBaseTrimmed = coreBaseUrl?.trim() ?? "";
+  const genesisOpsBlocked = genesisOperationsAllowed === false;
+  const nowUnixSec = Math.floor(Date.now() / 1000);
+  void challengeCountdownTick;
+  const challengeRemainingSec =
+    genesisChallengeExpiresAtUnix != null
+      ? Math.max(0, genesisChallengeExpiresAtUnix - nowUnixSec)
+      : 0;
+  const challengeExpired =
+    genesisChallengeExpiresAtUnix != null &&
+    !genesisChallengeVerified &&
+    nowUnixSec >= genesisChallengeExpiresAtUnix;
+
+  async function handleGenesisIssueChallenge() {
+    if (!coreBaseTrimmed) {
+      setGenesisStep4Error("Configure a Core base URL in Settings.");
+      return;
+    }
+    if (genesisOpsBlocked) return;
+    const pk = operatorPubkeyHex.trim();
+    if (!pk) {
+      setGenesisStep4Error("Public key from step 3 is required.");
+      return;
+    }
+    setGenesisStep4Error(null);
+    setGenesisIssueLoading(true);
+    try {
+      const out = await postGenesisChallenge(coreBaseTrimmed, pk);
+      setGenesisChallengeId(out.challenge_id);
+      setGenesisChallengeBody(out.challenge_body);
+      setGenesisChallengeExpiresAtUnix(out.expires_at_unix);
+      setGenesisChallengeVerified(false);
+      setGenesisChallengeSignatureHex("");
+    } catch (e: unknown) {
+      setGenesisStep4Error(formatClientError(e));
+    } finally {
+      setGenesisIssueLoading(false);
+    }
+  }
+
+  async function handleGenesisVerifyChallenge() {
+    if (!coreBaseTrimmed || !genesisChallengeId) return;
+    if (genesisOpsBlocked) return;
+    const sig = genesisChallengeSignatureHex
+      .replace(/[^0-9a-fA-F]/g, "")
+      .toLowerCase();
+    if (sig.length !== 128) {
+      setGenesisStep4Error(
+        "Signature must be 128 hex characters (64 bytes). Remove spaces or line breaks if you pasted from Keymaster.",
+      );
+      return;
+    }
+    if (challengeExpired) {
+      setGenesisStep4Error("This challenge has expired. Issue a new challenge.");
+      return;
+    }
+    setGenesisStep4Error(null);
+    setGenesisVerifyLoading(true);
+    try {
+      await postGenesisChallengeVerify(coreBaseTrimmed, genesisChallengeId, sig);
+      setGenesisChallengeVerified(true);
+    } catch (e: unknown) {
+      setGenesisStep4Error(formatClientError(e));
+    } finally {
+      setGenesisVerifyLoading(false);
+    }
+  }
+
+  async function copyGenesisChallengeBody() {
+    if (!genesisChallengeBody) return;
+    try {
+      await copyTextToClipboard(genesisChallengeBody);
+      setGenesisStep4Error(null);
+      setChallengeBodyCopyFeedback(true);
+      if (challengeBodyCopyTimerRef.current) {
+        clearTimeout(challengeBodyCopyTimerRef.current);
+      }
+      challengeBodyCopyTimerRef.current = setTimeout(() => {
+        setChallengeBodyCopyFeedback(false);
+        challengeBodyCopyTimerRef.current = null;
+      }, 2500);
+    } catch (e: unknown) {
+      setGenesisStep4Error(formatClientError(e));
+    }
+  }
+
   const backDisabled = currentStep <= 1;
-  const nextDisabled = currentStep >= GENESIS_WIZARD_STEP_COUNT;
+  const nextDisabled =
+    currentStep >= GENESIS_WIZARD_STEP_COUNT ||
+    (currentStep === 2 && rootOrgNameHasDot) ||
+    (currentStep === 3 && !step3BothFilled) ||
+    (currentStep === 4 && !genesisChallengeVerified);
 
   return (
     <div
@@ -107,7 +330,7 @@ export function GenesisNoticeModal({
         onClick={onDismiss}
       />
       <div
-        className="modulr-glass-surface relative z-10 flex w-[80vw] h-[50vh] min-h-0 flex-col rounded-2xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] shadow-2xl"
+        className="modulr-glass-surface relative z-10 flex w-[80vw] h-[65vh] min-h-0 flex-col rounded-2xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] shadow-2xl"
         style={{
           boxShadow:
             "0 24px 64px rgba(0,0,0,0.25), inset 0 1px 0 var(--modulr-glass-highlight)",
@@ -122,8 +345,8 @@ export function GenesisNoticeModal({
               Genesis
             </h2>
             <p className="mt-1 text-xs leading-snug text-[var(--modulr-text-muted)]">
-              Network:{" "}
-              <span className="font-semibold text-[var(--modulr-text)]">{networkLine}</span>
+              Network mode:{" "}
+              <span className="font-semibold text-[var(--modulr-text)]">{networkModeLabel}</span>
             </p>
           </div>
           <button
@@ -139,12 +362,12 @@ export function GenesisNoticeModal({
           {currentStep === 1 && (
             <div className="space-y-5">
               <p className="text-base font-medium leading-relaxed text-[var(--modulr-text)]">
-                Welcome to Modulr — this network has not been initialized yet.
+                Welcome to {rootOrgDisplayName} — this network has not been initialized yet.
               </p>
               <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
                 You are seeing this because{" "}
                 <strong className="font-semibold text-[var(--modulr-text)]">genesis</strong> has not
-                run: the Modulr deployment you are connected to still needs its one-time setup.
+                run: the Core deployment you are connected to still needs its one-time setup.
                 That setup registers your network on the chain of trust, creates the{" "}
                 <strong className="font-semibold text-[var(--modulr-text)]">first organization</strong>
                 , and establishes the{" "}
@@ -152,60 +375,138 @@ export function GenesisNoticeModal({
                 your bootstrap identity on this network until others are invited.
               </p>
               <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
-                The next screens walk you through that registration — keys, verification, and final
-                confirmation — so you can bring this network online with confidence.
+                The next screens walk you through naming and branding, operator keys, verification,
+                and final confirmation — so you can bring this network online with confidence.
               </p>
-              <div className="border-t border-[var(--modulr-glass-border)] pt-5">
-                <p className="mb-3 text-sm text-[var(--modulr-text-muted)]">
-                  When you&apos;re ready, choose a <strong className="text-[var(--modulr-text)]">single</strong>{" "}
-                  name for the root organization — one segment like{" "}
-                  <span className="font-mono text-[var(--modulr-text)]">modulr</span>, not{" "}
-                  <span className="font-mono text-[var(--modulr-text)]">team.example</span>. This
-                  registration is the <strong className="text-[var(--modulr-text)]">root</strong> for
-                  this network: it anchors trust for{" "}
-                  <strong className="text-[var(--modulr-text)]">all</strong> subdomains and child orgs
-                  under Modulr here, which is why dotted &quot;domain.subdomain&quot; names are not
-                  appropriate for this step — and why keeping it to one clear label is better for
-                  security and clarity. Emoji are OK if they make the name friendlier; Core accepts
-                  them as part of this single segment.
-                </p>
-                <div>
-                  <label htmlFor="genesis-network-label" className={fieldLabel}>
-                    Root organization name
-                  </label>
-                  <input
-                    id="genesis-network-label"
-                    type="text"
-                    autoComplete="off"
-                    maxLength={ROOT_ORG_LABEL_MAX_LEN}
-                    value={networkLabel}
-                    onChange={(e) => setNetworkLabel(e.target.value)}
-                    className={inputCls}
-                    placeholder="modulr"
-                  />
-                  <p className="mt-1.5 text-xs leading-snug text-[var(--modulr-text-muted)]">
-                    Up to {ROOT_ORG_LABEL_MAX_LEN} characters, one segment (no dots). Letters,
-                    numbers, emoji, and spaces are fine — Core lowercases letters for consistency.
-                    Avoid &quot;domain.subdomain&quot; patterns; this name is the root for the whole
-                    tree under this network.
-                  </p>
-                </div>
-              </div>
             </div>
           )}
 
           {currentStep === 2 && (
-            <div className="space-y-4">
-              <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
-                Enter the bootstrap operator&apos;s Ed25519 public key (hex) and how you want this
-                operator labeled. Private keys stay in Keymaster — paste only the public key here.
+            <div className="space-y-5">
+              <p className="text-base font-medium text-[var(--modulr-text)]">Root organization</p>
+              <p className="text-sm text-[var(--modulr-text-muted)]">
+                Choose a <strong className="text-[var(--modulr-text)]">single</strong> name and an
+                optional SVG logo. One segment like{" "}
+                <span className="font-mono text-[var(--modulr-text)]">modulr</span>, not{" "}
+                <span className="font-mono text-[var(--modulr-text)]">team.example</span> — this root
+                anchors trust for <strong className="text-[var(--modulr-text)]">all</strong>{" "}
+                subdomains and child orgs on this network. Emoji are OK in the name; Core accepts
+                them as part of this single segment.
               </p>
               <div>
-                <label htmlFor="genesis-operator-pk" className={fieldLabel}>
-                  Operator public key (hex)
+                <label htmlFor="genesis-network-label" className={fieldLabel}>
+                  Root organization name
+                </label>
+                <input
+                  id="genesis-network-label"
+                  type="text"
+                  autoComplete="off"
+                  maxLength={ROOT_ORG_LABEL_MAX_LEN}
+                  value={networkLabel}
+                  onChange={(e) => setNetworkLabel(e.target.value)}
+                  aria-invalid={rootOrgNameHasDot}
+                  aria-describedby={
+                    rootOrgNameHasDot
+                      ? "genesis-root-org-dot-error genesis-root-org-hint"
+                      : "genesis-root-org-hint"
+                  }
+                  className={`${inputCls} ${
+                    rootOrgNameHasDot ? "border-red-400/70 ring-2 ring-red-400/30" : ""
+                  }`}
+                  placeholder="modulr"
+                />
+                {rootOrgNameHasDot ? (
+                  <p
+                    id="genesis-root-org-dot-error"
+                    role="alert"
+                    className="mt-2 text-xs font-medium leading-snug text-red-400/90"
+                  >
+                    A dot (.) isn&apos;t allowed here — this must be one segment only, not
+                    team.example or domain.subdomain. The root org you create owns naming under this
+                    entire network, so a single label is required for security and clarity.
+                  </p>
+                ) : null}
+                <p
+                  id="genesis-root-org-hint"
+                  className="mt-1.5 text-xs leading-snug text-[var(--modulr-text-muted)]"
+                >
+                  Up to {ROOT_ORG_LABEL_MAX_LEN} characters, one segment (no dots). Letters,
+                  numbers, emoji, and spaces are fine — Core lowercases letters for consistency.
+                  Avoid &quot;domain.subdomain&quot; patterns; this name is the root for the whole tree
+                  under this network.
+                </p>
+              </div>
+
+              <div className="border-t border-[var(--modulr-glass-border)] pt-5">
+                <p className="mb-3 text-sm text-[var(--modulr-text-muted)]">
+                  Optional: add an <strong className="text-[var(--modulr-text)]">SVG logo</strong>{" "}
+                  for this root organization (shown in the shell when wired to Core). Preview only for
+                  now — upload is not persisted yet.
+                </p>
+                <label htmlFor="genesis-network-logo" className={fieldLabel}>
+                  Root organization logo (SVG)
+                </label>
+                <div className="flex flex-wrap items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <input
+                      ref={logoFileInputRef}
+                      id="genesis-network-logo"
+                      type="file"
+                      accept=".svg,image/svg+xml"
+                      className="block w-full text-xs text-[var(--modulr-text-muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--modulr-glass-border)] file:bg-[var(--modulr-glass-fill)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--modulr-text)]"
+                      onChange={onNetworkLogoFileChange}
+                    />
+                    {networkLogoFileName ? (
+                      <p className="mt-1 truncate text-xs text-[var(--modulr-text-muted)]">
+                        {networkLogoFileName}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div
+                    className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[var(--modulr-glass-border)] bg-black/20"
+                    aria-hidden={!networkLogoObjectUrl}
+                  >
+                    {networkLogoObjectUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- blob: SVG preview
+                      <img
+                        src={networkLogoObjectUrl}
+                        alt=""
+                        className="max-h-full max-w-full object-contain p-1"
+                      />
+                    ) : (
+                      <span className="px-2 text-center text-[10px] text-[var(--modulr-text-muted)]">
+                        Preview
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {networkLogoObjectUrl ? (
+                  <button
+                    type="button"
+                    onClick={clearNetworkLogo}
+                    className="mt-2 text-xs font-medium text-[var(--modulr-text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--modulr-text)]"
+                  >
+                    Remove logo
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
+                Enter the Ed25519 <strong className="text-[var(--modulr-text)]">public key</strong>{" "}
+                (hex) for this bootstrap username, and the{" "}
+                <strong className="text-[var(--modulr-text)]">username</strong> label you want
+                shown. Private keys stay in Keymaster — paste only the public key here.
+              </p>
+              <div>
+                <label htmlFor="genesis-username-pk" className={fieldLabel}>
+                  Public key (hex)
                 </label>
                 <textarea
-                  id="genesis-operator-pk"
+                  id="genesis-username-pk"
                   value={operatorPubkeyHex}
                   onChange={(e) => setOperatorPubkeyHex(e.target.value)}
                   rows={3}
@@ -215,27 +516,256 @@ export function GenesisNoticeModal({
                 />
               </div>
               <div>
-                <label htmlFor="genesis-operator-name" className={fieldLabel}>
-                  Operator name
+                <label htmlFor="genesis-username-display" className={fieldLabel}>
+                  Username
                 </label>
                 <input
-                  id="genesis-operator-name"
+                  id="genesis-username-display"
                   type="text"
-                  autoComplete="name"
+                  autoComplete="username"
                   value={operatorDisplayName}
                   onChange={(e) => setOperatorDisplayName(e.target.value)}
                   className={inputCls}
-                  placeholder="e.g. Alex — initial admin"
+                  placeholder="e.g. alex — initial admin"
                 />
               </div>
             </div>
           )}
 
-          {currentStep >= 3 && (
-            <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
-              Challenge signing, verification, and completion will go here in a later step. Your
-              entries from the previous screens are kept in memory for now (not sent to Core yet).
-            </p>
+          {currentStep === 4 && (
+            <div className="space-y-4">
+              <p className="text-base font-medium text-[var(--modulr-text)]">Sign the challenge</p>
+              <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
+                Core issues a one-time challenge bound to your{" "}
+                <strong className="text-[var(--modulr-text)]">username public key</strong> from step 3.
+                Copy the challenge into Keymaster (
+                <span className="font-mono text-[10px]">Sign challenge</span>), sign with the{" "}
+                <strong className="text-[var(--modulr-text)]">same identity</strong> whose public key
+                you pasted in step 3, then paste the{" "}
+                <strong className="text-[var(--modulr-text)]">128-character hex</strong> signature here.
+                Core verifies with{" "}
+                <span className="font-mono text-xs">POST /genesis/challenge/verify</span>.
+              </p>
+              <p className="text-xs leading-snug text-[var(--modulr-text-muted)]">
+                If verification fails: (1) the step 3 public key must be the same identity you sign
+                with in Keymaster; (2) use <strong className="text-[var(--modulr-text)]">Copy body</strong>{" "}
+                / <strong className="text-[var(--modulr-text)]">Copy signature</strong> — selecting
+                text by hand can introduce Windows CRLF line endings or a one-character typo in the
+                128 hex chars; (3) Keymaster normalizes CRLF to match Core&apos;s line feeds and strips
+                trailing junk on the challenge paste.
+              </p>
+
+              {!coreBaseTrimmed ? (
+                <p className="text-sm font-medium text-amber-400/90" role="status">
+                  Add a Core base URL in Settings to issue a challenge.
+                </p>
+              ) : null}
+              {genesisOpsBlocked ? (
+                <p className="text-sm font-medium text-amber-400/90" role="status">
+                  This deployment does not allow genesis operations (
+                  <span className="font-mono">genesis_operations_allowed: false</span>). Use a
+                  local or testnet Core with genesis enabled.
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={
+                    !coreBaseTrimmed ||
+                    genesisOpsBlocked ||
+                    genesisIssueLoading ||
+                    !operatorPubkeyHex.trim()
+                  }
+                  onClick={handleGenesisIssueChallenge}
+                  className={
+                    !coreBaseTrimmed || genesisOpsBlocked || !operatorPubkeyHex.trim()
+                      ? "rounded-lg border border-[var(--modulr-glass-border)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--modulr-text-muted)] opacity-50 cursor-not-allowed"
+                      : "rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/25"
+                  }
+                >
+                  {genesisIssueLoading ? "Issuing…" : genesisChallengeId ? "Issue new challenge" : "Issue challenge"}
+                </button>
+                {genesisChallengeId && genesisChallengeExpiresAtUnix != null ? (
+                  <span className="text-xs text-[var(--modulr-text-muted)]">
+                    {genesisChallengeVerified ? (
+                      <span className="font-medium text-emerald-400/90">Challenge verified.</span>
+                    ) : challengeExpired ? (
+                      <span className="font-medium text-amber-400/90">Expired — issue a new challenge.</span>
+                    ) : (
+                      <>
+                        Expires in{" "}
+                        <span className="font-mono text-[var(--modulr-text)]">
+                          {formatChallengeRemaining(challengeRemainingSec)}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                ) : null}
+              </div>
+
+              {genesisChallengeId ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-end justify-between gap-2">
+                    <label htmlFor="genesis-challenge-body" className={fieldLabel}>
+                      Challenge body (Core stores this exact UTF-8 text)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={copyGenesisChallengeBody}
+                      className={
+                        challengeBodyCopyFeedback
+                          ? "text-xs font-semibold text-emerald-400/95"
+                          : "text-xs font-medium text-[var(--modulr-accent)] underline decoration-dotted underline-offset-2 hover:opacity-90"
+                      }
+                      aria-label={
+                        challengeBodyCopyFeedback
+                          ? "Challenge body copied to clipboard"
+                          : "Copy challenge body to clipboard"
+                      }
+                    >
+                      <span aria-live="polite">{challengeBodyCopyFeedback ? "Copied" : "Copy body"}</span>
+                    </button>
+                  </div>
+                  <textarea
+                    id="genesis-challenge-body"
+                    readOnly
+                    value={genesisChallengeBody}
+                    rows={8}
+                    spellCheck={false}
+                    className={`${inputCls} font-mono text-xs leading-relaxed opacity-95`}
+                  />
+                  <p className="text-xs text-[var(--modulr-text-muted)]">
+                    <span className="font-mono">challenge_id</span> (nonce):{" "}
+                    <span className="break-all font-mono text-[11px] text-[var(--modulr-text)]">
+                      {genesisChallengeId}
+                    </span>
+                  </p>
+                </div>
+              ) : null}
+
+              {genesisChallengeId && !genesisChallengeVerified ? (
+                <div className="space-y-2">
+                  <label htmlFor="genesis-challenge-sig" className={fieldLabel}>
+                    Signature (hex)
+                  </label>
+                  <textarea
+                    id="genesis-challenge-sig"
+                    value={genesisChallengeSignatureHex}
+                    onChange={(e) => setGenesisChallengeSignatureHex(e.target.value)}
+                    rows={3}
+                    spellCheck={false}
+                    disabled={challengeExpired || genesisVerifyLoading}
+                    className={`${inputCls} font-mono text-xs leading-relaxed`}
+                    placeholder="128 hex characters from Keymaster"
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      genesisOpsBlocked ||
+                      genesisVerifyLoading ||
+                      challengeExpired ||
+                      genesisChallengeSignatureHex.replace(/[^0-9a-fA-F]/g, "").length < 128
+                    }
+                    onClick={handleGenesisVerifyChallenge}
+                    className={
+                      genesisOpsBlocked ||
+                      genesisVerifyLoading ||
+                      challengeExpired ||
+                      genesisChallengeSignatureHex.replace(/[^0-9a-fA-F]/g, "").length < 128
+                        ? "rounded-lg border border-[var(--modulr-glass-border)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--modulr-text-muted)] opacity-50 cursor-not-allowed"
+                        : "rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/25"
+                    }
+                  >
+                    {genesisVerifyLoading ? "Verifying…" : "Verify signature"}
+                  </button>
+                </div>
+              ) : null}
+
+              {genesisChallengeVerified ? (
+                <p className="text-sm font-medium text-emerald-400/90" role="status">
+                  Signature verified. Use <strong className="font-semibold">Next</strong> to finish
+                  genesis on the following step.
+                </p>
+              ) : null}
+
+              {genesisStep4Error ? (
+                <p
+                  className="text-sm font-medium text-red-400/90"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  {genesisStep4Error}
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {currentStep === 5 && (
+            <div className="space-y-5">
+              <p className="text-base font-medium text-[var(--modulr-text)]">Complete genesis</p>
+              <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
+                This step will call{" "}
+                <span className="font-mono text-xs">POST /genesis/complete</span> with your verified
+                challenge, root organization name, and organization signing key. Below is a preview of
+                what you&apos;ve entered.
+              </p>
+
+              <div className="rounded-xl border border-[var(--modulr-glass-border)] bg-black/15 px-4 py-3 text-sm">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--modulr-text-muted)]">
+                  Summary
+                </p>
+                <dl className="space-y-2 text-[var(--modulr-text)]">
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                    <dt className="text-[var(--modulr-text-muted)]">Root organization</dt>
+                    <dd className="font-medium">{networkLabel.trim() || "—"}</dd>
+                  </div>
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                    <dt className="text-[var(--modulr-text-muted)]">Username</dt>
+                    <dd className="font-medium">{operatorDisplayName.trim() || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[var(--modulr-text-muted)]">Username public key (hex)</dt>
+                    <dd className="mt-1 break-all font-mono text-xs text-[var(--modulr-text)]">
+                      {operatorPubkeyHex.trim() || "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[var(--modulr-text-muted)]">
+                      <span className="font-mono">challenge_id</span> (verified)
+                    </dt>
+                    <dd className="mt-1 break-all font-mono text-[11px] text-[var(--modulr-text)]">
+                      {genesisChallengeId?.trim() || "—"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div>
+                <label htmlFor="genesis-org-pk" className={fieldLabel}>
+                  Organization signing public key (hex)
+                </label>
+                <textarea
+                  id="genesis-org-pk"
+                  value={orgSigningPubkeyHex}
+                  onChange={(e) => setOrgSigningPubkeyHex(e.target.value)}
+                  rows={3}
+                  spellCheck={false}
+                  className={`${inputCls} font-mono text-xs leading-relaxed`}
+                  placeholder="64 hex characters — often the same as the username public key for a single-org bootstrap"
+                />
+                <p className="mt-1.5 text-xs leading-snug text-[var(--modulr-text-muted)]">
+                  Maps to <span className="font-mono">root_organization_signing_public_key_hex</span>{" "}
+                  on complete. Many deployments use the same Ed25519 key as the username for the root
+                  org at genesis.
+                </p>
+              </div>
+
+              <p className="text-xs text-[var(--modulr-text-muted)]">
+                <span className="font-mono">Complete</span> is not wired yet — no request is sent to
+                Core from this screen.
+              </p>
+            </div>
           )}
         </div>
 
@@ -291,7 +821,7 @@ export function GenesisNoticeModal({
                     : "rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--modulr-accent)]"
                 }
               >
-                Next
+                {currentStep >= GENESIS_WIZARD_STEP_COUNT ? "Complete" : "Next"}
               </button>
             </div>
           </div>
