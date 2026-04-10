@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from typing import Any
 
@@ -16,10 +15,6 @@ from modulr_core.validation.hex_codec import InvalidHexEncoding, decode_hex_fixe
 # Max seconds after challenge consume during which ``complete`` is allowed.
 GENESIS_COMPLETION_WINDOW_SECONDS = 900
 
-_ROOT_LABEL_RE = re.compile(
-    r"^([a-z0-9]|[a-z0-9][a-z0-9-]{0,61}[a-z0-9])$",
-)
-
 
 class GenesisCompletionError(Exception):
     """Invalid completion request or inconsistent genesis state."""
@@ -27,34 +22,39 @@ class GenesisCompletionError(Exception):
 
 def validate_genesis_root_organization_label(raw: str) -> str:
     """
-    Normalize and validate a single DNS label for the genesis root org name.
+    Normalize and validate a single-segment root organization name for genesis.
 
-    Examples: ``modulr`` — no dots; not the same rule as ``register_org`` dotted
-    domains.
+    One segment only (no ``.``), up to 63 Unicode code points — allows letters,
+    digits, emoji, spaces, etc., so operators can use a friendly label. Still not
+    the same rule as dotted ``register_org`` domains.
 
     Args:
         raw: Operator-supplied root organization label.
 
     Returns:
-        Lowercased label string.
+        Lowercased string (Unicode ``.lower()`` for letters; emoji unchanged).
 
     Raises:
-        GenesisCompletionError: If the label is empty, too long, or not a valid
-            single label.
+        GenesisCompletionError: If the label is empty, longer than 63 code points,
+            contains ``.``, or ASCII control characters (U+0000–U+001F or U+007F).
     """
-    s = raw.strip().lower()
+    s = raw.strip()
     if not s:
         raise GenesisCompletionError("root_organization_name must be non-empty")
     if len(s) > 63:
         raise GenesisCompletionError(
             "root_organization_name must be at most 63 characters",
         )
-    if not _ROOT_LABEL_RE.match(s):
+    if "." in s:
         raise GenesisCompletionError(
-            "root_organization_name must be a single DNS label "
-            "(e.g. modulr): letters, digits, interior hyphens only; no dots",
+            "root_organization_name must be a single segment with no dots "
+            "(not a domain.subdomain style name)",
         )
-    return s
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in s):
+        raise GenesisCompletionError(
+            "root_organization_name must not contain control characters",
+        )
+    return s.lower()
 
 
 def _normalize_ed25519_pubkey_hex(raw: str) -> str:
@@ -131,7 +131,9 @@ def complete_genesis(
         challenge_id: 64-hex challenge id from verify step.
         subject_signing_pubkey_hex: Operator key (must match consumed
             challenge).
-        root_organization_name: Single-label root org (e.g. ``modulr``).
+        root_organization_name: Single-segment root org name (e.g. ``modulr`` or
+            ``modulr 🚀``); no dots; validated by
+            :func:`validate_genesis_root_organization_label`.
         root_organization_signing_public_key_hex: Org Ed25519 public key hex;
             stored as ``name_bindings.resolved_id``.
         operator_display_name: Optional operator display string (e.g. ``Chris``).

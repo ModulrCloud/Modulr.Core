@@ -14,8 +14,12 @@ def test_validate_genesis_root_organization_label_modulr() -> None:
     assert validate_genesis_root_organization_label("Modulr") == "modulr"
 
 
+def test_validate_genesis_root_organization_label_allows_emoji() -> None:
+    assert validate_genesis_root_organization_label("Modulr 🚀") == "modulr 🚀"
+
+
 def test_validate_genesis_root_organization_label_rejects_dotted() -> None:
-    with pytest.raises(GenesisCompletionError, match="single DNS label"):
+    with pytest.raises(GenesisCompletionError, match="single segment"):
         validate_genesis_root_organization_label("modulr.network")
 
 
