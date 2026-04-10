@@ -2,20 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { AnimatedBackground } from "@/components/background/AnimatedBackground";
 import { IconGear } from "@/components/icons";
 import { useAppUi } from "@/components/providers/AppProviders";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { useCoreVersion } from "@/hooks/useCoreVersion";
+import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 
 import { BrandMark } from "./BrandMark";
+import { GenesisNoticeModal } from "./GenesisNoticeModal";
 import { ThemeModeSwitch } from "./ThemeModeSwitch";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { setSettingsOpen } = useAppUi();
+  const { settings, setSettingsOpen } = useAppUi();
   const pathname = usePathname();
   const coreVersion = useCoreVersion();
+  const coreBase = primaryCoreBaseUrl(settings.coreEndpoints);
+  const [genesisNoticeDismissed, setGenesisNoticeDismissed] = useState(false);
+
+  useEffect(() => {
+    setGenesisNoticeDismissed(false);
+  }, [coreBase]);
+
+  const showGenesisNotice =
+    coreVersion.kind === "ok" &&
+    coreVersion.genesisComplete === false &&
+    !genesisNoticeDismissed;
 
   const chromeBtn =
     "modulr-glass-surface flex size-11 items-center justify-center rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-[var(--modulr-text)] shadow-lg transition-[border-color,color,box-shadow] duration-200 hover:border-[var(--modulr-accent)]/50 hover:text-[var(--modulr-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--modulr-accent)]";
@@ -60,6 +74,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                 : null,
                               coreVersion.genesisOperationsAllowed !== undefined
                                 ? `genesis_operations_allowed: ${coreVersion.genesisOperationsAllowed}`
+                                : null,
+                              coreVersion.genesisComplete !== undefined
+                                ? `genesis_complete: ${coreVersion.genesisComplete}`
                                 : null,
                             ]
                               .filter(Boolean)
@@ -148,6 +165,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <SettingsPanel />
+
+      <GenesisNoticeModal
+        open={showGenesisNotice}
+        onDismiss={() => setGenesisNoticeDismissed(true)}
+        networkEnvironment={
+          coreVersion.kind === "ok" ? coreVersion.networkEnvironment : undefined
+        }
+        networkDisplayName={
+          coreVersion.kind === "ok" ? coreVersion.networkDisplayName : undefined
+        }
+      />
     </div>
   );
 }

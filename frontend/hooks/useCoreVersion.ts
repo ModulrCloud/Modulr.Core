@@ -15,6 +15,7 @@ export type CoreVersionState =
       networkEnvironment?: string;
       networkDisplayName?: string;
       genesisOperationsAllowed?: boolean;
+      genesisComplete?: boolean;
     }
   | { kind: "error"; message: string };
 
@@ -41,6 +42,7 @@ export function useCoreVersion(): CoreVersionState {
             networkEnvironment: v.network_environment,
             networkDisplayName: v.network_name,
             genesisOperationsAllowed: v.genesis_operations_allowed,
+            genesisComplete: v.genesis_complete,
           });
         }
       })

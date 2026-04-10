@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
@@ -47,6 +48,22 @@ def _conn() -> sqlite3.Connection:
     c = connect_memory(check_same_thread=False)
     apply_migrations(c)
     return c
+
+
+def test_startup_logs_deployment_context(caplog: pytest.LogCaptureFixture) -> None:
+    """Stage 9: one INFO line with tier, genesis_complete, instance_id."""
+    caplog.set_level(logging.INFO, logger="modulr_core.http.app")
+    app = create_app(settings=_settings(), conn=_conn())
+    with TestClient(app) as client:
+        client.get("/version")
+    startup_msgs = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.INFO and "modulr-core startup" in r.getMessage()
+    ]
+    assert startup_msgs, "expected modulr-core startup INFO log"
+    assert "network_environment=local" in startup_msgs[0]
+    assert "genesis_complete=False" in startup_msgs[0]
 
 
 def _signed_body(
@@ -312,6 +329,7 @@ def test_get_version() -> None:
     assert data["network_environment"] == "testnet"
     assert data["network_name"] == "Modulr Test"
     assert data["genesis_operations_allowed"] is True
+    assert data["genesis_complete"] is False
 
 
 def test_get_version_production_no_genesis() -> None:
@@ -334,6 +352,7 @@ def test_get_version_production_no_genesis() -> None:
     assert data["network_environment"] == "production"
     assert data["genesis_operations_allowed"] is False
     assert data["network_name"] == "Modulr (production)"
+    assert data["genesis_complete"] is False
 
 
 def test_post_message_get_protocol_version() -> None:
