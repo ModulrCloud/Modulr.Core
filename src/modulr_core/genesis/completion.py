@@ -35,16 +35,15 @@ def validate_genesis_root_organization_label(raw: str) -> str:
         Lowercased string (Unicode ``.lower()`` for letters; emoji unchanged).
 
     Raises:
-        GenesisCompletionError: If the label is empty, longer than 63 code points,
-            contains ``.``, or ASCII control characters (U+0000–U+001F or U+007F).
+        GenesisCompletionError: If the label is empty, longer than 63 Unicode code
+            points after lowercasing, contains ``.``, or ASCII control characters
+            (U+0000–U+001F or U+007F). Length is enforced **after** ``.lower()`` so
+            case folding cannot expand the string past the limit (e.g. Turkish
+            ``İ`` → ``i`` + combining dot).
     """
     s = raw.strip()
     if not s:
         raise GenesisCompletionError("root_organization_name must be non-empty")
-    if len(s) > 63:
-        raise GenesisCompletionError(
-            "root_organization_name must be at most 63 characters",
-        )
     if "." in s:
         raise GenesisCompletionError(
             "root_organization_name must be a single segment with no dots "
@@ -54,7 +53,12 @@ def validate_genesis_root_organization_label(raw: str) -> str:
         raise GenesisCompletionError(
             "root_organization_name must not contain control characters",
         )
-    return s.lower()
+    normalized = s.lower()
+    if len(normalized) > 63:
+        raise GenesisCompletionError(
+            "root_organization_name must be at most 63 characters",
+        )
+    return normalized
 
 
 def _normalize_ed25519_pubkey_hex(raw: str) -> str:
