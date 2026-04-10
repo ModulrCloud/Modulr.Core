@@ -36,6 +36,14 @@ class NameBindingsRepository:
         row = cur.fetchone()
         return dict(row) if row else None
 
+    def delete_by_name(self, name: str) -> bool:
+        """Delete one row by ``name``; return whether a row was removed."""
+        cur = self._conn.execute(
+            "DELETE FROM name_bindings WHERE name = ?",
+            (name,),
+        )
+        return cur.rowcount > 0
+
     def list_by_resolved_id(self, resolved_id: str) -> list[dict[str, Any]]:
         cur = self._conn.execute(
             """

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from modulr_core.clock import EpochClock, now_epoch_seconds
 from modulr_core.config.load import load_settings
-from modulr_core.errors.codes import SuccessCode
+from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import ConfigurationError
 from modulr_core.genesis.challenge import GenesisChallengeError
 from modulr_core.genesis.completion import GenesisCompletionError
@@ -20,6 +20,11 @@ from modulr_core.genesis.local_invoke import (
     genesis_complete_payload,
     genesis_issue_challenge_payload,
     genesis_verify_challenge_payload,
+)
+from modulr_core.genesis.reset import (
+    GenesisResetError,
+    genesis_reset_allowed,
+    reset_genesis_state,
 )
 from modulr_core.genesis.wire_map import (
     wire_error_for_genesis_challenge,
@@ -31,6 +36,9 @@ from modulr_core.http.envelope import (
     unsigned_success_response_envelope,
 )
 from modulr_core.persistence import apply_migrations, open_database
+from modulr_core.repositories.core_genesis import CoreGenesisRepository
+from modulr_core.repositories.genesis_challenge import GenesisChallengeRepository
+from modulr_core.repositories.name_bindings import NameBindingsRepository
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +127,29 @@ def genesis_main(argv: list[str]) -> None:
         default=None,
         metavar="NAME",
     )
+    p_reset = sub.add_parser(
+        "reset",
+        help=(
+            "Clear genesis wizard state (challenges + completion); "
+            "local/testnet only, extra guard required."
+        ),
+    )
+    p_reset.add_argument(
+        "--yes",
+        action="store_true",
+        required=True,
+        help="Required confirmation (you accept destroying genesis state).",
+    )
+    p_reset.add_argument(
+        "--root-organization-name",
+        default=None,
+        metavar="LABEL",
+        help=(
+            "If genesis was completed before the root label was stored in the DB, "
+            "pass the same single-label root name used at complete so the "
+            "name binding can be removed."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -134,7 +165,16 @@ def genesis_main(argv: list[str]) -> None:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(_EXIT_BLOCKED_OR_USAGE)
 
-    if not settings.genesis_operations_allowed():
+    if args.step == "reset":
+        if not genesis_reset_allowed(settings):
+            print(
+                "error: genesis reset is not allowed. Requires "
+                "network_environment local or testnet, plus either dev_mode=true "
+                "or MODULR_ALLOW_GENESIS_RESET=1 in the environment.",
+                file=sys.stderr,
+            )
+            sys.exit(_EXIT_BLOCKED_OR_USAGE)
+    elif not settings.genesis_operations_allowed():
         print(
             "error: genesis CLI is not allowed for this deployment "
             "(e.g. network_environment=production).",
@@ -153,6 +193,13 @@ def genesis_main(argv: list[str]) -> None:
             _run_challenge(conn, lock, clock, args.subject_signing_pubkey)
         elif args.step == "verify":
             _run_verify(conn, lock, clock, args.challenge_id, args.signature_hex)
+        elif args.step == "reset":
+            _run_reset(
+                conn,
+                lock,
+                clock,
+                root_organization_name_override=args.root_organization_name,
+            )
         else:
             _run_complete(
                 conn,
@@ -294,6 +341,74 @@ def _run_complete(
             success_code=SuccessCode.GENESIS_WIZARD_COMPLETED,
             detail="Genesis wizard completed; this deployment is live.",
             payload=out_payload,
+            clock=clock,
+        ),
+    )
+
+
+def _run_reset(
+    conn: sqlite3.Connection,
+    lock: threading.Lock,
+    clock: EpochClock,
+    *,
+    root_organization_name_override: str | None,
+) -> None:
+    print(
+        "WARNING: This will delete all genesis_challenge rows and reset "
+        "core_genesis wizard fields (bootstrap keys, completion flag).",
+        file=sys.stderr,
+    )
+    print(
+        "WARNING: This cannot be undone. Core instance_id is preserved.",
+        file=sys.stderr,
+    )
+    with lock:
+        try:
+            payload = reset_genesis_state(
+                conn=conn,
+                clock=clock,
+                genesis_repo=CoreGenesisRepository(conn),
+                challenge_repo=GenesisChallengeRepository(conn),
+                name_repo=NameBindingsRepository(conn),
+                root_organization_name_override=root_organization_name_override,
+            )
+            conn.commit()
+        except GenesisResetError as e:
+            conn.rollback()
+            _print_json(
+                error_response_envelope(
+                    code=ErrorCode.INVALID_REQUEST,
+                    detail=str(e),
+                    message_id=None,
+                ),
+            )
+            sys.exit(_EXIT_DOMAIN)
+        except GenesisCompletionError as e:
+            conn.rollback()
+            _print_json(
+                error_response_envelope(
+                    code=ErrorCode.INVALID_REQUEST,
+                    detail=str(e),
+                    message_id=None,
+                ),
+            )
+            sys.exit(_EXIT_DOMAIN)
+        except Exception:
+            logger.exception("genesis reset")
+            conn.rollback()
+            print("error: internal error.", file=sys.stderr)
+            sys.exit(_EXIT_BLOCKED_OR_USAGE)
+
+    print(
+        "modulr-core genesis reset: completed (see JSON on stdout).",
+        file=sys.stderr,
+    )
+    _print_json(
+        unsigned_success_response_envelope(
+            operation_response="genesis_reset_completed_response",
+            success_code=SuccessCode.GENESIS_RESET_COMPLETED,
+            detail="Genesis wizard state cleared; you may run the wizard again.",
+            payload=payload,
             clock=clock,
         ),
     )

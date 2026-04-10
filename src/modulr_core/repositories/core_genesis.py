@@ -22,6 +22,7 @@ class CoreGenesisSnapshot:
     genesis_complete: bool
     bootstrap_signing_pubkey_hex: str | None
     bootstrap_operator_display_name: str | None
+    genesis_root_organization_label: str | None
     modulr_apex_domain: str | None
     instance_id: str | None
     updated_at: int
@@ -59,7 +60,8 @@ class CoreGenesisRepository:
     """Read/update the single ``core_genesis`` row.
 
     Migration ``007`` seeds the row; ``008`` adds ``instance_id``; ``009`` adds
-    ``bootstrap_operator_display_name``.
+    ``bootstrap_operator_display_name``; ``010`` adds
+    ``genesis_root_organization_label``.
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -70,6 +72,7 @@ class CoreGenesisRepository:
             """
             SELECT genesis_complete, bootstrap_signing_pubkey_hex,
                    bootstrap_operator_display_name,
+                   genesis_root_organization_label,
                    modulr_apex_domain, instance_id, updated_at
             FROM core_genesis
             WHERE singleton = 1
@@ -83,6 +86,12 @@ class CoreGenesisRepository:
         pk_s = str(pk) if pk is not None else None
         disp = row["bootstrap_operator_display_name"]
         disp_s = str(disp).strip() if disp is not None and str(disp).strip() else None
+        root_lbl = row["genesis_root_organization_label"]
+        root_s = (
+            str(root_lbl).strip().lower()
+            if root_lbl is not None and str(root_lbl).strip()
+            else None
+        )
         apex = row["modulr_apex_domain"]
         apex_s = str(apex).strip() if apex is not None and str(apex).strip() else None
         iid = row["instance_id"]
@@ -91,6 +100,7 @@ class CoreGenesisRepository:
             genesis_complete=complete,
             bootstrap_signing_pubkey_hex=pk_s,
             bootstrap_operator_display_name=disp_s,
+            genesis_root_organization_label=root_s,
             modulr_apex_domain=apex_s,
             instance_id=iid_s,
             updated_at=int(row["updated_at"]),
@@ -155,6 +165,45 @@ class CoreGenesisRepository:
             WHERE singleton = 1
             """,
             (display_name, updated_at),
+        )
+
+    def set_genesis_root_organization_label(
+        self,
+        *,
+        label: str | None,
+        updated_at: int,
+    ) -> None:
+        """Persist the wizard root org single-label (migration ``010``)."""
+        if label is not None and len(label) > 63:
+            raise ValueError(
+                "genesis_root_organization_label must be at most 63 characters",
+            )
+        self._conn.execute(
+            """
+            UPDATE core_genesis
+            SET genesis_root_organization_label = ?, updated_at = ?
+            WHERE singleton = 1
+            """,
+            (label, updated_at),
+        )
+
+    def clear_genesis_wizard_state(self, *, updated_at: int) -> None:
+        """Reset wizard columns so the first-boot flow can run again.
+
+        Clears completion flags and operator/org fields; keeps ``instance_id``.
+        """
+        self._conn.execute(
+            """
+            UPDATE core_genesis SET
+                genesis_complete = 0,
+                bootstrap_signing_pubkey_hex = NULL,
+                bootstrap_operator_display_name = NULL,
+                genesis_root_organization_label = NULL,
+                modulr_apex_domain = NULL,
+                updated_at = ?
+            WHERE singleton = 1
+            """,
+            (updated_at,),
         )
 
     def set_bootstrap_signing_pubkey_hex(

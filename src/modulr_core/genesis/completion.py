@@ -99,11 +99,7 @@ def _binding_matches_existing(
     mj = row.get("metadata_json")
     rj_n = None if rj in (None, "") else str(rj)
     mj_n = None if mj in (None, "") else str(mj)
-    return (
-        str(row["resolved_id"]) == resolved_id
-        and rj_n is None
-        and mj_n is None
-    )
+    return str(row["resolved_id"]) == resolved_id and rj_n is None and mj_n is None
 
 
 def complete_genesis(
@@ -192,6 +188,7 @@ def complete_genesis(
             created_at=now,
         )
 
+    genesis_repo.set_genesis_root_organization_label(label=root_label, updated_at=now)
     genesis_repo.set_bootstrap_signing_pubkey_hex(pubkey_hex=subj, updated_at=now)
     genesis_repo.set_bootstrap_operator_display_name(
         display_name=display,

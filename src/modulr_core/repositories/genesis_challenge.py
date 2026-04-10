@@ -89,6 +89,11 @@ class GenesisChallengeRepository:
         )
         return cur.rowcount == 1
 
+    def delete_all(self) -> int:
+        """Remove every challenge row; returns deleted row count."""
+        cur = self._conn.execute("DELETE FROM genesis_challenge")
+        return int(cur.rowcount)
+
 
 def _row_to_challenge(row: sqlite3.Row | tuple[Any, ...]) -> GenesisChallengeRow:
     if isinstance(row, sqlite3.Row):

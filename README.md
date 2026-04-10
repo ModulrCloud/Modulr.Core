@@ -299,6 +299,8 @@ A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE
 
 **Read-only:** **`GET /version`** returns JSON `target_module`, `version`, **`network_environment`** (`local` | `testnet` | `production`, default `production` if omitted in config), **`network_name`** (operator display string — set `network_name` in TOML or get a default like `Modulr (local)`), and **`genesis_operations_allowed`** (boolean; `true` only on `local` / `testnet`). In **`dev_mode`**, CORS allows **`http://` and `https://`** for **`localhost:3000`** and **`127.0.0.1:3000`**, plus **`cors_extra_origins`** from TOML and **`MODULR_CORE_CORS_EXTRA_ORIGINS`** (append). Set **`MODULR_CORE_CORS_ORIGINS`** to replace the entire list (comma-separated). **`network_environment = "production"`** cannot be combined with **`dev_mode = true`** (configuration is rejected at startup).
 
+**Genesis wizard (local/testnet only):** use **`POST /genesis/...`** or **`modulr-core genesis challenge|verify|complete`** (put **`-c` / `--config`** before the step name). To wipe wizard state and run the flow again: **`modulr-core genesis reset --yes`** (warnings on stderr). That path requires **`dev_mode = true`** *or* **`MODULR_ALLOW_GENESIS_RESET=1`** when **`dev_mode`** is false (e.g. shared testnet). Details: **`plan/genesis_wizard_core.md`**.
+
 ### Customer web UI (stage 1)
 
 A **Next.js** app in **`frontend/`** is the customer-facing shell (theme blend, glass layout, firefly/gradient backgrounds, settings for Modulr.Core URLs). It is kept beside Core for convenience and is expected to move to its own repository later.
