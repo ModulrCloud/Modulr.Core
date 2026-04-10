@@ -33,6 +33,7 @@ from modulr_core.messages import validate_inbound_request
 from modulr_core.messages.constants import TARGET_MODULE_CORE
 from modulr_core.operations.dispatch import dispatch_operation
 from modulr_core.persistence import apply_migrations, open_database
+from modulr_core.repositories.core_genesis import CoreGenesisRepository
 from modulr_core.repositories.message_dedup import MessageDedupRepository
 from modulr_core.version import MODULE_VERSION
 
@@ -45,6 +46,26 @@ def _verbose_http_env() -> bool:
         "true",
         "yes",
     )
+
+
+def _log_startup_deployment_context(
+    settings: Settings,
+    conn: sqlite3.Connection,
+) -> None:
+    """Log tier, genesis completion, and instance id at INFO (ops / support)."""
+    try:
+        snap = CoreGenesisRepository(conn).get()
+        logger.info(
+            "modulr-core startup: network_environment=%s genesis_complete=%s "
+            "instance_id=%s",
+            settings.network_environment.value,
+            snap.genesis_complete,
+            snap.instance_id or "(none)",
+        )
+    except Exception:
+        logger.exception(
+            "modulr-core startup: failed to read core_genesis (database issue?)",
+        )
 
 
 def _log_registered_routes(app: FastAPI) -> None:
@@ -129,6 +150,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        _log_startup_deployment_context(settings, conn)
         if _verbose_http_env():
             _log_registered_routes(app)
         yield
