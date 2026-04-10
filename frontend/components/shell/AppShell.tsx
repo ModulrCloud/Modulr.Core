@@ -172,8 +172,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         networkEnvironment={
           coreVersion.kind === "ok" ? coreVersion.networkEnvironment : undefined
         }
-        networkDisplayName={
-          coreVersion.kind === "ok" ? coreVersion.networkDisplayName : undefined
+        coreBaseUrl={coreBase}
+        genesisOperationsAllowed={
+          coreVersion.kind === "ok" ? coreVersion.genesisOperationsAllowed : undefined
         }
       />
     </div>

@@ -18,6 +18,7 @@ from modulr_keymaster.profiles import (
     empty_inner_payload,
     inner_payload_to_profiles,
     new_profile,
+    normalize_pasted_challenge_for_signing,
     profiles_to_inner_payload,
     rename_profile_in_list,
     sign_challenge_utf8,
@@ -403,6 +404,7 @@ def create_app() -> FastAPI:
 
         err: str | None = None
         sig_hex: str | None = None
+        challenge = normalize_pasted_challenge_for_signing(challenge)
         if challenge == "":
             err = (
                 "Paste the challenge text Core (or your checklist) gave you, "

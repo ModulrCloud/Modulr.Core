@@ -313,6 +313,10 @@ npm run dev
 
 Details: **`frontend/README.md`**. Phased product plan: **`plan/customer_web_interface.md`**.
 
+### Planned: module branding (tracking)
+
+Module publishers should be able to register a **logo** (or icon) for their module so explorers and the customer shell can show it next to the module name. **Format policy is not fixed yet** — **SVG** is a strong default (scales cleanly at any size); allowing PNG/WebP with size limits is an alternative. This will need a wire contract, validation, and storage or URL policy on Core or the module registry when implemented.
+
 ---
 
 ## License
