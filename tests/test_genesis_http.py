@@ -47,10 +47,14 @@ def _conn() -> sqlite3.Connection:
 def _test_pubkey_hex() -> str:
     seed = hashlib.sha256(b"genesis-http-test").digest()
     priv = Ed25519PrivateKey.from_private_bytes(seed)
-    return priv.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    return (
+        priv.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
 
 
 def _priv_for_test_pubkey() -> Ed25519PrivateKey:
@@ -240,14 +244,22 @@ def _operator_and_org_keys() -> tuple[Ed25519PrivateKey, str, Ed25519PrivateKey,
     org_priv = Ed25519PrivateKey.from_private_bytes(
         hashlib.sha256(b"genesis-http-org").digest(),
     )
-    op_pub = op_priv.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
-    org_pub = org_priv.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    op_pub = (
+        op_priv.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    org_pub = (
+        org_priv.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     return op_priv, op_pub, org_priv, org_pub
 
 
@@ -296,6 +308,7 @@ def test_genesis_complete_happy_path() -> None:
     assert out["payload"]["bootstrap_signing_pubkey_hex"] == op_pub
     snap = CoreGenesisRepository(conn).get()
     assert snap.genesis_complete is True
+    assert snap.genesis_root_organization_label == "modulr"
     assert snap.bootstrap_operator_display_name == "Chris"
     row = NameBindingsRepository(conn).get_by_name("modulr")
     assert row is not None
@@ -402,10 +415,15 @@ def test_genesis_complete_stale_after_window() -> None:
 
 def test_genesis_complete_wrong_subject_pubkey() -> None:
     op_priv, op_pub, _o, org_pub = _operator_and_org_keys()
-    other_pub = Ed25519PrivateKey.generate().public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    other_pub = (
+        Ed25519PrivateKey.generate()
+        .public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     t = {"now": 1_700_000_000}
     app = create_app(
         settings=_settings(),
