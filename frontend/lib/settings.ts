@@ -33,6 +33,31 @@ export const SETTINGS_STORAGE_KEY = "modulr.customer-ui.settings";
 /** Max file size before we store a data URL in localStorage (same cap in Settings + Genesis step 3). */
 export const PROFILE_IMAGE_MAX_BYTES = 256 * 1024;
 
+/**
+ * Raster types accepted by Core `POST /genesis/complete` (operator profile image).
+ * SVG and other `image/*` types are rejected server-side; keep the UI aligned.
+ */
+export const PROFILE_IMAGE_ALLOWED_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
+
+/** `accept` string for `<input type="file">` (includes `image/jpg` for picky clients). */
+export const PROFILE_IMAGE_FILE_ACCEPT =
+  "image/png,image/jpeg,image/jpg,image/webp,image/gif";
+
+export function normalizeProfileImageMimeForCore(mime: string): string {
+  const m = mime.trim().toLowerCase();
+  return m === "image/jpg" ? "image/jpeg" : m;
+}
+
+export function isProfileImageMimeAllowedForCore(mime: string): boolean {
+  const n = normalizeProfileImageMimeForCore(mime);
+  return (PROFILE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(n);
+}
+
 /** Max persisted length for `profileAvatarDataUrl` (~512 KB string budget). */
 const PROFILE_AVATAR_DATA_URL_MAX_CHARS = 520_000;
 

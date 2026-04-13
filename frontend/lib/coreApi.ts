@@ -1,4 +1,5 @@
 import { buildSignedMessageBody } from "@/lib/modulrWire/signCoreMessage";
+import { normalizeProfileImageMimeForCore } from "@/lib/settings";
 
 import { primaryCoreBaseUrl } from "./coreBaseUrl";
 
@@ -207,10 +208,11 @@ export async function postGenesisComplete(
     payload.root_organization_logo_svg = svg;
   }
   const imgB64 = body.bootstrap_operator_profile_image_base64?.trim();
-  const imgMime = body.bootstrap_operator_profile_image_mime?.trim().toLowerCase();
-  if (imgB64 && imgMime) {
+  const imgMimeRaw = body.bootstrap_operator_profile_image_mime?.trim();
+  if (imgB64 && imgMimeRaw) {
     payload.bootstrap_operator_profile_image_base64 = imgB64;
-    payload.bootstrap_operator_profile_image_mime = imgMime;
+    payload.bootstrap_operator_profile_image_mime =
+      normalizeProfileImageMimeForCore(imgMimeRaw);
   }
   const res = await fetch(`${base}/genesis/complete`, {
     method: "POST",

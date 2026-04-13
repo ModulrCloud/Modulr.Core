@@ -10,7 +10,10 @@ import {
   type ModulrSelectOption,
 } from "@/components/ui/ModulrSelect";
 import {
+  PROFILE_IMAGE_FILE_ACCEPT,
   PROFILE_IMAGE_MAX_BYTES,
+  isProfileImageMimeAllowedForCore,
+  normalizeProfileImageMimeForCore,
   type AppSettings,
   type BackgroundPreset,
 } from "@/lib/settings";
@@ -74,8 +77,8 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setProfileImageError("Choose an image file.");
+    if (file.type && !isProfileImageMimeAllowedForCore(file.type)) {
+      setProfileImageError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
       return;
     }
     if (file.size > PROFILE_IMAGE_MAX_BYTES) {
@@ -88,6 +91,12 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
     reader.onload = () => {
       const data = reader.result;
       if (typeof data !== "string") return;
+      const head = /^data:([^;,]+)/i.exec(data);
+      const mime = head ? normalizeProfileImageMimeForCore(head[1]) : "";
+      if (!isProfileImageMimeAllowedForCore(mime)) {
+        setProfileImageError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
+        return;
+      }
       update("profileAvatarDataUrl", data);
       setProfileImageError(null);
     };
@@ -172,7 +181,7 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
                 <input
                   id="profile-avatar"
                   type="file"
-                  accept="image/*"
+                  accept={PROFILE_IMAGE_FILE_ACCEPT}
                   className="block w-full text-xs text-[var(--modulr-text-muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--modulr-glass-border)] file:bg-[var(--modulr-glass-fill)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--modulr-text)]"
                   onChange={onProfileImageChange}
                 />
@@ -182,7 +191,7 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
                   </p>
                 ) : (
                   <p className="mt-1 text-[10px] text-[var(--modulr-text-muted)]">
-                    Max {PROFILE_IMAGE_MAX_BYTES / 1024} KB. No server upload yet.
+                    PNG, JPEG, WebP, or GIF. Max {PROFILE_IMAGE_MAX_BYTES / 1024} KB.
                   </p>
                 )}
                 {settings.profileAvatarDataUrl ? (
