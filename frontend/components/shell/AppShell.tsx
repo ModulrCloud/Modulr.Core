@@ -9,17 +9,21 @@ import { IconGear } from "@/components/icons";
 import { useAppUi } from "@/components/providers/AppProviders";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { useCoreVersion } from "@/hooks/useCoreVersion";
+import { useGenesisBranding } from "@/hooks/useGenesisBranding";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 
-import { BrandMark } from "./BrandMark";
 import { GenesisNoticeModal } from "./GenesisNoticeModal";
+import { ShellOrgLogo } from "./ShellOrgLogo";
 import { ThemeModeSwitch } from "./ThemeModeSwitch";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings, setSettingsOpen } = useAppUi();
   const pathname = usePathname();
-  const coreVersion = useCoreVersion();
+  const { coreVersion, refetchCoreVersion } = useCoreVersion();
   const coreBase = primaryCoreBaseUrl(settings.coreEndpoints);
+  const genesisBrandingEnabled =
+    coreVersion.kind === "ok" && coreVersion.genesisComplete === true;
+  const { branding: genesisBranding } = useGenesisBranding(coreBase, genesisBrandingEnabled);
   const [genesisNoticeDismissed, setGenesisNoticeDismissed] = useState(false);
 
   useEffect(() => {
@@ -56,7 +60,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-current={pathname === "/" ? "page" : undefined}
                 className="flex min-w-0 shrink-0 items-center gap-3 rounded-xl outline-offset-2 transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--modulr-accent)]"
               >
-                <BrandMark />
+                <ShellOrgLogo
+                  svgMarkup={
+                    genesisBranding.kind === "ok"
+                      ? genesisBranding.raw.root_organization_logo_svg
+                      : null
+                  }
+                />
                 <div className="hidden min-w-0 flex-col gap-0.5 pt-px sm:flex">
                   <span className="modulr-text text-xs font-semibold leading-tight sm:text-sm">
                     Modulr.Core
@@ -164,7 +174,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      <SettingsPanel />
+      <SettingsPanel
+        coreOperatorProfileDataUrl={
+          genesisBranding.kind === "ok" ? genesisBranding.operatorProfileDataUrl : null
+        }
+      />
 
       <GenesisNoticeModal
         open={showGenesisNotice}
@@ -176,6 +190,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         genesisOperationsAllowed={
           coreVersion.kind === "ok" ? coreVersion.genesisOperationsAllowed : undefined
         }
+        onGenesisCompleteSuccess={() => {
+          refetchCoreVersion();
+        }}
       />
     </div>
   );

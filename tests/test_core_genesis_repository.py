@@ -47,6 +47,9 @@ def test_core_genesis_default_after_migration() -> None:
     assert s.instance_id is None
     assert s.bootstrap_operator_display_name is None
     assert s.genesis_root_organization_label is None
+    assert s.genesis_root_org_logo_svg is None
+    assert s.bootstrap_operator_profile_image is None
+    assert s.bootstrap_operator_profile_image_mime is None
     assert s.updated_at == 0
 
 

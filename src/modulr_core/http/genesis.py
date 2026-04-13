@@ -13,6 +13,7 @@ from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.genesis.challenge import GenesisChallengeError
 from modulr_core.genesis.completion import GenesisCompletionError
 from modulr_core.genesis.local_invoke import (
+    genesis_branding_payload,
     genesis_complete_payload,
     genesis_issue_challenge_payload,
     genesis_verify_challenge_payload,
@@ -35,6 +36,20 @@ from modulr_core.http.status_map import http_status_for_error_code
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/genesis", tags=["genesis"])
+
+
+@router.get("/branding")
+async def get_genesis_branding(request: Request) -> dict[str, object]:
+    """
+    Read persisted root org logo (SVG) and bootstrap operator profile image.
+
+    Unsigned JSON (same family as ``GET /version``). Available whenever Core is
+    reachable; when ``genesis_complete`` is false, image fields are null.
+    """
+    conn = request.app.state.conn
+    lock = request.app.state.conn_lock
+    with lock:
+        return genesis_branding_payload(conn=conn)
 
 
 def _json_error(
@@ -173,13 +188,7 @@ async def post_genesis_complete(request: Request) -> JSONResponse:
         )
 
     try:
-        (
-            challenge_id,
-            subject_hex,
-            root_org_name,
-            org_pk_hex,
-            operator_display,
-        ) = parse_genesis_complete_body(parsed)
+        parsed_body = parse_genesis_complete_body(parsed)
     except ValueError as e:
         return _json_error(code=ErrorCode.INVALID_REQUEST, detail=str(e))
 
@@ -192,11 +201,16 @@ async def post_genesis_complete(request: Request) -> JSONResponse:
             out_payload = genesis_complete_payload(
                 conn=conn,
                 clock=clock,
-                challenge_id=challenge_id,
-                subject_signing_pubkey_hex=subject_hex,
-                root_organization_name=root_org_name,
-                root_organization_signing_public_key_hex=org_pk_hex,
-                operator_display_name=operator_display,
+                challenge_id=parsed_body.challenge_id,
+                subject_signing_pubkey_hex=parsed_body.subject_signing_pubkey_hex,
+                root_organization_name=parsed_body.root_organization_name,
+                root_organization_signing_public_key_hex=(
+                    parsed_body.root_organization_signing_public_key_hex
+                ),
+                operator_display_name=parsed_body.operator_display_name,
+                root_organization_logo_svg=parsed_body.root_organization_logo_svg,
+                operator_profile_image=parsed_body.operator_profile_image_bytes,
+                operator_profile_image_mime=parsed_body.operator_profile_image_mime,
             )
             conn.commit()
         except GenesisCompletionError as e:

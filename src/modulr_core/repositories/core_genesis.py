@@ -14,6 +14,13 @@ from modulr_core.validation.names import validate_modulr_org_domain
 
 _MODULR_APEX_DOMAIN_MAX_LEN = 253
 
+# Branding size caps (aligned with genesis completion validators / frontend).
+_ROOT_ORG_LOGO_SVG_MAX_BYTES = 512 * 1024
+_OPERATOR_PROFILE_IMAGE_MAX_BYTES = 256 * 1024
+_ALLOWED_PROFILE_IMAGE_MIMES = frozenset(
+    {"image/png", "image/jpeg", "image/webp", "image/gif"},
+)
+
 
 @dataclass(frozen=True)
 class CoreGenesisSnapshot:
@@ -23,6 +30,9 @@ class CoreGenesisSnapshot:
     bootstrap_signing_pubkey_hex: str | None
     bootstrap_operator_display_name: str | None
     genesis_root_organization_label: str | None
+    genesis_root_org_logo_svg: str | None
+    bootstrap_operator_profile_image: bytes | None
+    bootstrap_operator_profile_image_mime: str | None
     modulr_apex_domain: str | None
     instance_id: str | None
     updated_at: int
@@ -61,7 +71,8 @@ class CoreGenesisRepository:
 
     Migration ``007`` seeds the row; ``008`` adds ``instance_id``; ``009`` adds
     ``bootstrap_operator_display_name``; ``010`` adds
-    ``genesis_root_organization_label``.
+    ``genesis_root_organization_label``; ``011`` adds root org SVG logo and
+    operator profile image blob + MIME.
     """
 
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -73,6 +84,9 @@ class CoreGenesisRepository:
             SELECT genesis_complete, bootstrap_signing_pubkey_hex,
                    bootstrap_operator_display_name,
                    genesis_root_organization_label,
+                   genesis_root_org_logo_svg,
+                   bootstrap_operator_profile_image,
+                   bootstrap_operator_profile_image_mime,
                    modulr_apex_domain, instance_id, updated_at
             FROM core_genesis
             WHERE singleton = 1
@@ -92,6 +106,20 @@ class CoreGenesisRepository:
             if root_lbl is not None and str(root_lbl).strip()
             else None
         )
+        logo_svg = row["genesis_root_org_logo_svg"]
+        logo_svg_s = (
+            str(logo_svg)
+            if logo_svg is not None and str(logo_svg).strip()
+            else None
+        )
+        prof_blob = row["bootstrap_operator_profile_image"]
+        prof_bytes = bytes(prof_blob) if prof_blob is not None else None
+        prof_mime = row["bootstrap_operator_profile_image_mime"]
+        prof_mime_s = (
+            str(prof_mime).strip()
+            if prof_mime is not None and str(prof_mime).strip()
+            else None
+        )
         apex = row["modulr_apex_domain"]
         apex_s = str(apex).strip() if apex is not None and str(apex).strip() else None
         iid = row["instance_id"]
@@ -101,6 +129,9 @@ class CoreGenesisRepository:
             bootstrap_signing_pubkey_hex=pk_s,
             bootstrap_operator_display_name=disp_s,
             genesis_root_organization_label=root_s,
+            genesis_root_org_logo_svg=logo_svg_s,
+            bootstrap_operator_profile_image=prof_bytes,
+            bootstrap_operator_profile_image_mime=prof_mime_s,
             modulr_apex_domain=apex_s,
             instance_id=iid_s,
             updated_at=int(row["updated_at"]),
@@ -187,6 +218,63 @@ class CoreGenesisRepository:
             (label, updated_at),
         )
 
+    def set_genesis_root_org_logo_svg(
+        self,
+        *,
+        svg_markup: str | None,
+        updated_at: int,
+    ) -> None:
+        """Persist root organization logo as SVG source text (migration ``011``)."""
+        if svg_markup is not None:
+            u8 = len(svg_markup.encode("utf-8"))
+            if u8 > _ROOT_ORG_LOGO_SVG_MAX_BYTES:
+                mx = _ROOT_ORG_LOGO_SVG_MAX_BYTES
+                raise ValueError(
+                    f"genesis_root_org_logo_svg must be at most {mx} bytes (UTF-8)",
+                )
+        self._conn.execute(
+            """
+            UPDATE core_genesis
+            SET genesis_root_org_logo_svg = ?, updated_at = ?
+            WHERE singleton = 1
+            """,
+            (svg_markup, updated_at),
+        )
+
+    def set_bootstrap_operator_profile_image(
+        self,
+        *,
+        image: bytes | None,
+        mime: str | None,
+        updated_at: int,
+    ) -> None:
+        """Persist bootstrap operator profile raster bytes and MIME type."""
+        if (image is None) != (mime is None):
+            raise ValueError(
+                "bootstrap_operator_profile_image and mime must both be set "
+                "or both null",
+            )
+        if image is not None and len(image) > _OPERATOR_PROFILE_IMAGE_MAX_BYTES:
+            mx = _OPERATOR_PROFILE_IMAGE_MAX_BYTES
+            raise ValueError(
+                f"bootstrap_operator_profile_image must be at most {mx} bytes",
+            )
+        if mime is not None and mime not in _ALLOWED_PROFILE_IMAGE_MIMES:
+            raise ValueError(
+                "bootstrap_operator_profile_image_mime must be one of: "
+                + ", ".join(sorted(_ALLOWED_PROFILE_IMAGE_MIMES)),
+            )
+        self._conn.execute(
+            """
+            UPDATE core_genesis
+            SET bootstrap_operator_profile_image = ?,
+                bootstrap_operator_profile_image_mime = ?,
+                updated_at = ?
+            WHERE singleton = 1
+            """,
+            (image, mime, updated_at),
+        )
+
     def clear_genesis_wizard_state(self, *, updated_at: int) -> None:
         """Reset wizard columns so the first-boot flow can run again.
 
@@ -199,6 +287,9 @@ class CoreGenesisRepository:
                 bootstrap_signing_pubkey_hex = NULL,
                 bootstrap_operator_display_name = NULL,
                 genesis_root_organization_label = NULL,
+                genesis_root_org_logo_svg = NULL,
+                bootstrap_operator_profile_image = NULL,
+                bootstrap_operator_profile_image_mime = NULL,
                 modulr_apex_domain = NULL,
                 updated_at = ?
             WHERE singleton = 1
