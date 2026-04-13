@@ -38,9 +38,14 @@ function inputCls() {
 type SettingsPanelProps = {
   /** When genesis finished and Core persisted a profile image, prefer this over local-only data. */
   coreOperatorProfileDataUrl?: string | null;
+  /** From `GET /genesis/branding` after genesis — not a session login, but Core-held identity. */
+  coreBootstrapDisplayName?: string | null;
 };
 
-export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPanelProps) {
+export function SettingsPanel({
+  coreOperatorProfileDataUrl = null,
+  coreBootstrapDisplayName = null,
+}: SettingsPanelProps) {
   const { settings, setSettings, settingsOpen, setSettingsOpen } = useAppUi();
   const [keymasterHint, setKeymasterHint] = useState(false);
   const [profileImageError, setProfileImageError] = useState<string | null>(null);
@@ -72,6 +77,8 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
   }
 
   const profileAvatarSrc = coreOperatorProfileDataUrl ?? settings.profileAvatarDataUrl;
+  const coreName = coreBootstrapDisplayName?.trim() ?? "";
+  const hasCoreBootstrapIdentity = Boolean(coreName);
 
   function onProfileImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -168,12 +175,22 @@ export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPan
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-[var(--modulr-text)]">
-                  Not signed in
+                  {hasCoreBootstrapIdentity ? coreName : "Not signed in"}
                 </p>
                 <p className="modulr-text-muted mt-1 text-xs leading-relaxed">
-                  After Keymaster sign-in, your display name and session will appear here. Core
-                  will know your operator identity once genesis is complete and session wiring
-                  lands.
+                  {hasCoreBootstrapIdentity ? (
+                    <>
+                      Bootstrap operator display name and profile image are read from Core (
+                      <span className="font-mono text-[10px]">GET /genesis/branding</span>). This
+                      is not a Keymaster or wallet session — those come later.
+                    </>
+                  ) : (
+                    <>
+                      After Keymaster sign-in, your display name and session will appear here. Core
+                      will know your operator identity once genesis is complete and session wiring
+                      lands.
+                    </>
+                  )}
                 </p>
                 <label className={`${labelCls()} mt-3`} htmlFor="profile-avatar">
                   Profile picture (local)
