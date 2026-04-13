@@ -36,6 +36,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Local-only: do not push planning / spec copies to GitHub (project preference)
+# Local-only: do not push planning copies to GitHub (project preference)
 plan/
-docs/
