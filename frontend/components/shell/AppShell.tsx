@@ -178,6 +178,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         coreOperatorProfileDataUrl={
           genesisBranding.kind === "ok" ? genesisBranding.operatorProfileDataUrl : null
         }
+        coreBootstrapDisplayName={
+          genesisBranding.kind === "ok"
+            ? genesisBranding.raw.bootstrap_operator_display_name
+            : null
+        }
       />
 
       <GenesisNoticeModal
