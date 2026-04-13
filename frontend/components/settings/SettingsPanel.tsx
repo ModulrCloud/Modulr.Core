@@ -1,12 +1,22 @@
 "use client";
 
+import type { ChangeEvent } from "react";
+import { useState } from "react";
+
 import { useAppUi } from "@/components/providers/AppProviders";
 import { ThemeModeSwitch } from "@/components/shell/ThemeModeSwitch";
 import {
   ModulrSelect,
   type ModulrSelectOption,
 } from "@/components/ui/ModulrSelect";
-import type { AppSettings, BackgroundPreset } from "@/lib/settings";
+import {
+  PROFILE_IMAGE_FILE_ACCEPT,
+  PROFILE_IMAGE_MAX_BYTES,
+  isProfileImageMimeAllowedForCore,
+  normalizeProfileImageMimeForCore,
+  type AppSettings,
+  type BackgroundPreset,
+} from "@/lib/settings";
 
 const BACKGROUND_PRESET_OPTIONS: ModulrSelectOption[] = [
   { value: "fireflies", label: "Fireflies" },
@@ -25,8 +35,15 @@ function inputCls() {
   return "w-full rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] px-3 py-2 text-sm text-[var(--modulr-text)] outline-none ring-[var(--modulr-accent)] placeholder:text-[var(--modulr-text-muted)] focus:ring-2";
 }
 
-export function SettingsPanel() {
+type SettingsPanelProps = {
+  /** When genesis finished and Core persisted a profile image, prefer this over local-only data. */
+  coreOperatorProfileDataUrl?: string | null;
+};
+
+export function SettingsPanel({ coreOperatorProfileDataUrl = null }: SettingsPanelProps) {
   const { settings, setSettings, settingsOpen, setSettingsOpen } = useAppUi();
+  const [keymasterHint, setKeymasterHint] = useState(false);
+  const [profileImageError, setProfileImageError] = useState<string | null>(null);
 
   function update<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     setSettings((s) => ({ ...s, [key]: value }));
@@ -52,6 +69,38 @@ export function SettingsPanel() {
       ...s,
       coreEndpoints: s.coreEndpoints.filter((_, j) => j !== i),
     }));
+  }
+
+  const profileAvatarSrc = coreOperatorProfileDataUrl ?? settings.profileAvatarDataUrl;
+
+  function onProfileImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type && !isProfileImageMimeAllowedForCore(file.type)) {
+      setProfileImageError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
+      return;
+    }
+    if (file.size > PROFILE_IMAGE_MAX_BYTES) {
+      setProfileImageError(
+        `Image must be ${PROFILE_IMAGE_MAX_BYTES / 1024} KB or smaller (resize coming later).`,
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = reader.result;
+      if (typeof data !== "string") return;
+      const head = /^data:([^;,]+)/i.exec(data);
+      const mime = head ? normalizeProfileImageMimeForCore(head[1]) : "";
+      if (!isProfileImageMimeAllowedForCore(mime)) {
+        setProfileImageError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
+        return;
+      }
+      update("profileAvatarDataUrl", data);
+      setProfileImageError(null);
+    };
+    reader.readAsDataURL(file);
   }
 
   return (
@@ -97,42 +146,86 @@ export function SettingsPanel() {
               Profile
             </h3>
             <p className="mb-4 text-xs text-[var(--modulr-text-muted)]">
-              Sign-in is not wired yet. This panel will hold your account when Core
-              supports Google OAuth or Modulr Wallet.
+              After genesis completes, your profile image is stored in Core and shown here from{" "}
+              <span className="font-mono text-[10px]">GET /genesis/branding</span>. Local uploads
+              still apply in-browser until a signed profile-update flow exists.
             </p>
             <div className="flex items-start gap-4 rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 p-4">
               <div
-                className="flex size-12 shrink-0 items-center justify-center rounded-full border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-lg font-bold text-[var(--modulr-text-muted)]"
+                className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-lg font-bold text-[var(--modulr-text-muted)]"
                 aria-hidden
               >
-                ?
+                {profileAvatarSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- data URL from user file
+                  <img
+                    src={profileAvatarSrc}
+                    alt=""
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  "?"
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-[var(--modulr-text)]">
                   Not signed in
                 </p>
                 <p className="modulr-text-muted mt-1 text-xs leading-relaxed">
-                  After login, your display name, wallet address or email (masked), and
-                  session controls will appear here.
+                  After Keymaster sign-in, your display name and session will appear here. Core
+                  will know your operator identity once genesis is complete and session wiring
+                  lands.
                 </p>
+                <label className={`${labelCls()} mt-3`} htmlFor="profile-avatar">
+                  Profile picture (local)
+                </label>
+                <input
+                  id="profile-avatar"
+                  type="file"
+                  accept={PROFILE_IMAGE_FILE_ACCEPT}
+                  className="block w-full text-xs text-[var(--modulr-text-muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--modulr-glass-border)] file:bg-[var(--modulr-glass-fill)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--modulr-text)]"
+                  onChange={onProfileImageChange}
+                />
+                {profileImageError ? (
+                  <p className="mt-1 text-xs font-medium text-red-400/90" role="alert">
+                    {profileImageError}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[10px] text-[var(--modulr-text-muted)]">
+                    PNG, JPEG, WebP, or GIF. Max {PROFILE_IMAGE_MAX_BYTES / 1024} KB.
+                  </p>
+                )}
+                {settings.profileAvatarDataUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => update("profileAvatarDataUrl", "")}
+                    className="mt-2 text-xs font-medium text-[var(--modulr-text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--modulr-text)]"
+                  >
+                    Remove picture
+                  </button>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setKeymasterHint(true)}
+                    className="rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/20"
+                  >
+                    Continue with Keymaster
+                  </button>
                   <button
                     type="button"
                     disabled
                     className="rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] px-3 py-1.5 text-xs font-medium text-[var(--modulr-text-muted)]"
                     title="Coming soon"
                   >
-                    Continue with Google
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    className="rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/10 px-3 py-1.5 text-xs font-medium text-[var(--modulr-accent)]"
-                    title="Coming soon"
-                  >
                     Modulr Wallet
                   </button>
                 </div>
+                {keymasterHint ? (
+                  <p className="mt-2 text-xs leading-snug text-emerald-400/95">
+                    Next: same challenge flow as genesis — prove your Ed25519 key, then a
+                    browser session (see docs). For now this is a placeholder.
+                  </p>
+                ) : null}
               </div>
             </div>
           </section>

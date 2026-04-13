@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import sqlite3
@@ -313,6 +314,73 @@ def test_genesis_complete_happy_path() -> None:
     row = NameBindingsRepository(conn).get_by_name("modulr")
     assert row is not None
     assert row["resolved_id"] == org_pub
+
+
+def test_genesis_complete_with_branding_and_get_branding() -> None:
+    """Optional SVG + profile image persist; GET /genesis/branding returns them."""
+    op_priv, op_pub, _org_priv, org_pub = _operator_and_org_keys()
+    t = {"now": 1_700_000_000}
+    conn = _conn()
+    app = create_app(
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: t["now"],
+    )
+    client = TestClient(app)
+    d1 = client.post(
+        "/genesis/challenge",
+        content=json.dumps({"subject_signing_pubkey_hex": op_pub}).encode("utf-8"),
+    ).json()
+    cid = d1["payload"]["challenge_id"]
+    body = d1["payload"]["challenge_body"]
+    sig = op_priv.sign(body.encode("utf-8")).hex()
+    assert (
+        client.post(
+            "/genesis/challenge/verify",
+            content=json.dumps(
+                {"challenge_id": cid, "signature_hex": sig},
+            ).encode("utf-8"),
+        ).status_code
+        == 200
+    )
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>'
+    png_bytes = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01"
+        b"\x00\x00\x05\x00\x01\r\n-\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    png_b64 = base64.b64encode(png_bytes).decode("ascii")
+    r3 = client.post(
+        "/genesis/complete",
+        json={
+            "challenge_id": cid,
+            "subject_signing_pubkey_hex": op_pub,
+            "root_organization_name": "modulr",
+            "root_organization_signing_public_key_hex": org_pub,
+            "operator_display_name": "Chris",
+            "root_organization_logo_svg": svg,
+            "bootstrap_operator_profile_image_base64": png_b64,
+            "bootstrap_operator_profile_image_mime": "image/png",
+        },
+    )
+    assert r3.status_code == 200
+    out = r3.json()["payload"]
+    assert out["root_organization_logo_svg_stored"] is True
+    assert out["operator_profile_image_stored"] is True
+
+    rb = client.get("/genesis/branding")
+    assert rb.status_code == 200
+    b = rb.json()
+    assert b["genesis_complete"] is True
+    assert b["root_organization_label"] == "modulr"
+    assert b["bootstrap_operator_display_name"] == "Chris"
+    assert b["root_organization_logo_svg"] == svg
+    assert b["operator_profile_image_mime"] == "image/png"
+    assert base64.b64decode(b["operator_profile_image_base64"]) == png_bytes
+
+    snap = CoreGenesisRepository(conn).get()
+    assert snap.genesis_root_org_logo_svg == svg
+    assert snap.bootstrap_operator_profile_image == png_bytes
 
 
 def test_genesis_complete_without_verify_returns_error() -> None:

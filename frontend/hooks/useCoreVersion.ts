@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAppUi } from "@/components/providers/AppProviders";
 import { fetchCoreVersion } from "@/lib/coreApi";
@@ -19,10 +19,18 @@ export type CoreVersionState =
     }
   | { kind: "error"; message: string };
 
-export function useCoreVersion(): CoreVersionState {
+export function useCoreVersion(): {
+  coreVersion: CoreVersionState;
+  refetchCoreVersion: () => void;
+} {
   const { settings } = useAppUi();
   const base = primaryCoreBaseUrl(settings.coreEndpoints);
   const [state, setState] = useState<CoreVersionState>({ kind: "loading" });
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const refetchCoreVersion = useCallback(() => {
+    setRefreshTick((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +65,7 @@ export function useCoreVersion(): CoreVersionState {
     return () => {
       cancelled = true;
     };
-  }, [base]);
+  }, [base, refreshTick]);
 
-  return state;
+  return { coreVersion: state, refetchCoreVersion };
 }

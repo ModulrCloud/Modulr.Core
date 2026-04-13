@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import sqlite3
 from typing import Any
 
@@ -64,6 +65,29 @@ def genesis_verify_challenge_payload(
     return {"verified": True}
 
 
+def genesis_branding_payload(*, conn: sqlite3.Connection) -> dict[str, Any]:
+    """
+    Read persisted genesis branding (root org SVG logo, operator profile image).
+
+    Returns:
+        Plain JSON object for ``GET /genesis/branding`` (not a signed envelope).
+    """
+    g = CoreGenesisRepository(conn).get()
+    prof_b64: str | None = None
+    if g.bootstrap_operator_profile_image:
+        prof_b64 = base64.b64encode(g.bootstrap_operator_profile_image).decode(
+            "ascii",
+        )
+    return {
+        "genesis_complete": g.genesis_complete,
+        "root_organization_label": g.genesis_root_organization_label,
+        "bootstrap_operator_display_name": g.bootstrap_operator_display_name,
+        "root_organization_logo_svg": g.genesis_root_org_logo_svg,
+        "operator_profile_image_base64": prof_b64,
+        "operator_profile_image_mime": g.bootstrap_operator_profile_image_mime,
+    }
+
+
 def genesis_complete_payload(
     *,
     conn: sqlite3.Connection,
@@ -73,6 +97,9 @@ def genesis_complete_payload(
     root_organization_name: str,
     root_organization_signing_public_key_hex: str,
     operator_display_name: str | None,
+    root_organization_logo_svg: str | None = None,
+    operator_profile_image: bytes | None = None,
+    operator_profile_image_mime: str | None = None,
 ) -> dict[str, Any]:
     """
     Complete the genesis wizard (caller commits on success).
@@ -90,6 +117,9 @@ def genesis_complete_payload(
         root_organization_name=root_organization_name,
         root_organization_signing_public_key_hex=root_organization_signing_public_key_hex,
         operator_display_name=operator_display_name,
+        root_organization_logo_svg=root_organization_logo_svg,
+        operator_profile_image=operator_profile_image,
+        operator_profile_image_mime=operator_profile_image_mime,
     )
     g = CoreGenesisRepository(conn).get()
     norm_root = validate_genesis_root_organization_label(root_organization_name)
@@ -101,4 +131,6 @@ def genesis_complete_payload(
         ),
         "bootstrap_signing_pubkey_hex": g.bootstrap_signing_pubkey_hex,
         "operator_display_name": g.bootstrap_operator_display_name,
+        "root_organization_logo_svg_stored": g.genesis_root_org_logo_svg is not None,
+        "operator_profile_image_stored": g.bootstrap_operator_profile_image is not None,
     }

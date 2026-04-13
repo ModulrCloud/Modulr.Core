@@ -185,6 +185,15 @@ Future implementations may migrate components to:
 - Go (network services)
 - other languages as needed
 
+### Design notes (`docs/`)
+
+| Document | Topic |
+| -------- | ----- |
+| [`docs/organizations_and_envelope_encryption.md`](docs/organizations_and_envelope_encryption.md) | Organizations, DEKs, envelope encryption vs Modulr.Storage |
+| [`docs/genesis_and_session_roadmap.md`](docs/genesis_and_session_roadmap.md) | Finishing genesis (`/genesis/complete`), Keymaster-style shell sign-in, session tiers |
+| [`docs/partner_methods.md`](docs/partner_methods.md) | Partner-visible methods between orgs (idea; not implemented) |
+| [`docs/implementation_plan_profile_and_org_images.md`](docs/implementation_plan_profile_and_org_images.md) | Genesis complete, Keymaster sign-in, local vs server avatars |
+
 ---
 
 ## Status

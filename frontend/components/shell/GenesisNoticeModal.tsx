@@ -6,11 +6,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   postGenesisChallenge,
   postGenesisChallengeVerify,
+  postGenesisComplete,
 } from "@/lib/coreApi";
 import { formatClientError } from "@/lib/formatClientError";
+import {
+  PROFILE_IMAGE_FILE_ACCEPT,
+  PROFILE_IMAGE_MAX_BYTES,
+  isProfileImageMimeAllowedForCore,
+  normalizeProfileImageMimeForCore,
+} from "@/lib/settings";
 
 /**
- * 1 intro · 2 root org + logo · 3 username + pubkey · 4 challenge · 5 complete (TBD wire).
+ * 1 intro · 2 root org + logo · 3 operator profile image + pubkey + username · 4 challenge · 5 complete.
  */
 export const GENESIS_WIZARD_STEP_COUNT = 5;
 
@@ -40,6 +47,8 @@ type Props = {
   coreBaseUrl?: string;
   /** When `false`, genesis HTTP routes return 403 — step 4 cannot issue or verify. */
   genesisOperationsAllowed?: boolean;
+  /** After `POST /genesis/complete` succeeds — refetch `/version` so the shell hides the wizard. */
+  onGenesisCompleteSuccess?: () => void;
 };
 
 function formatChallengeRemaining(sec: number): string {
@@ -47,6 +56,11 @@ function formatChallengeRemaining(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Ed25519 public key hex: 64 hex chars after stripping non-hex. */
+function isEd25519PubkeyHex(s: string): boolean {
+  return s.replace(/[^0-9a-fA-F]/g, "").length === 64;
 }
 
 /**
@@ -86,6 +100,16 @@ async function copyTextToClipboard(text: string): Promise<void> {
   }
 }
 
+/** Extract base64 + MIME from a `data:image/...;base64,...` URL for `POST /genesis/complete`. */
+function dataUrlToBase64Payload(dataUrl: string): { base64: string; mime: string } | null {
+  const m = /^data:([^;,]+)(?:;[^;,]+)*;base64,([\s\S]+)$/i.exec(dataUrl.trim());
+  if (!m) return null;
+  const mime = m[1].trim().toLowerCase();
+  const base64 = m[2].replace(/\s/g, "");
+  if (!mime || !base64) return null;
+  return { mime, base64 };
+}
+
 /** Genesis wizard when Core reports `genesis_complete: false` (lab / first boot). */
 export function GenesisNoticeModal({
   open,
@@ -93,6 +117,7 @@ export function GenesisNoticeModal({
   networkEnvironment,
   coreBaseUrl,
   genesisOperationsAllowed,
+  onGenesisCompleteSuccess,
 }: Props) {
   const [currentStep, setCurrentStep] = useState(1);
   /** Display label for this network / root org (wired to complete later). */
@@ -112,14 +137,29 @@ export function GenesisNoticeModal({
   const [genesisIssueLoading, setGenesisIssueLoading] = useState(false);
   const [genesisVerifyLoading, setGenesisVerifyLoading] = useState(false);
   const [genesisStep4Error, setGenesisStep4Error] = useState<string | null>(null);
+  const [genesisCompleteLoading, setGenesisCompleteLoading] = useState(false);
+  /** After a successful `POST /genesis/complete`, keep controls locked until `/version` hides the modal. */
+  const [genesisCompleteSuccess, setGenesisCompleteSuccess] = useState(false);
+  const [genesisCompleteError, setGenesisCompleteError] = useState<string | null>(null);
   const [challengeCountdownTick, setChallengeCountdownTick] = useState(0);
   /** Brief UX after Copy body succeeds. */
   const [challengeBodyCopyFeedback, setChallengeBodyCopyFeedback] = useState(false);
-  /** Optional SVG logo for the root org — preview only until wire/storage exists. */
+  /** Optional SVG logo for the root org — persisted on `POST /genesis/complete`. */
   const [networkLogoObjectUrl, setNetworkLogoObjectUrl] = useState<string | null>(null);
+  const [networkLogoSvgText, setNetworkLogoSvgText] = useState<string | null>(null);
   const [networkLogoFileName, setNetworkLogoFileName] = useState<string | null>(null);
+  /**
+   * Bootstrap operator profile for this wizard only — not `SettingsPanel` / localStorage
+   * (`profileAvatarDataUrl`), so genesis cannot pre-fill or wipe the global profile.
+   */
+  const [genesisOperatorAvatarDataUrl, setGenesisOperatorAvatarDataUrl] = useState("");
+  const [operatorAvatarError, setOperatorAvatarError] = useState<string | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const operatorAvatarInputRef = useRef<HTMLInputElement>(null);
   const challengeBodyCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Invalidate in-flight `FileReader` results when a newer logo or avatar pick supersedes them. */
+  const genesisLogoSvgReadGenRef = useRef(0);
+  const genesisAvatarReadGenRef = useRef(0);
 
   const resetGenesisChallengeState = useCallback(() => {
     setGenesisChallengeId(null);
@@ -130,6 +170,9 @@ export function GenesisNoticeModal({
     setGenesisIssueLoading(false);
     setGenesisVerifyLoading(false);
     setGenesisStep4Error(null);
+    setGenesisCompleteError(null);
+    setGenesisCompleteLoading(false);
+    setGenesisCompleteSuccess(false);
     setChallengeBodyCopyFeedback(false);
     if (challengeBodyCopyTimerRef.current) {
       clearTimeout(challengeBodyCopyTimerRef.current);
@@ -149,8 +192,14 @@ export function GenesisNoticeModal({
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setNetworkLogoSvgText(null);
     setNetworkLogoFileName(null);
     if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+    genesisLogoSvgReadGenRef.current += 1;
+    setGenesisOperatorAvatarDataUrl("");
+    setOperatorAvatarError(null);
+    if (operatorAvatarInputRef.current) operatorAvatarInputRef.current.value = "";
+    genesisAvatarReadGenRef.current += 1;
   }, [open, resetGenesisChallengeState]);
 
   useEffect(() => {
@@ -190,7 +239,9 @@ export function GenesisNoticeModal({
   /** Core rejects ``.`` in root org name (single segment only). */
   const rootOrgNameHasDot = networkLabel.includes(".");
   const step3BothFilled =
-    operatorPubkeyHex.trim().length > 0 && operatorDisplayName.trim().length > 0;
+    operatorPubkeyHex.trim().length > 0 &&
+    operatorDisplayName.trim().length > 0 &&
+    Boolean(genesisOperatorAvatarDataUrl.trim());
 
   function goBack() {
     setCurrentStep((s) => Math.max(1, s - 1));
@@ -202,29 +253,80 @@ export function GenesisNoticeModal({
 
   function onNetworkLogoFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     const okType =
       file.type === "image/svg+xml" ||
       file.type === "image/svg" ||
       file.name.toLowerCase().endsWith(".svg");
     if (!okType) {
-      e.target.value = "";
       return;
     }
+    const gen = ++genesisLogoSvgReadGenRef.current;
     setNetworkLogoObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
     });
     setNetworkLogoFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (gen !== genesisLogoSvgReadGenRef.current) return;
+      const t = reader.result;
+      if (typeof t === "string") {
+        setNetworkLogoSvgText(t);
+      }
+    };
+    reader.readAsText(file);
   }
 
   function clearNetworkLogo() {
+    genesisLogoSvgReadGenRef.current += 1;
     setNetworkLogoObjectUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setNetworkLogoSvgText(null);
     setNetworkLogoFileName(null);
     if (logoFileInputRef.current) logoFileInputRef.current.value = "";
+  }
+
+  function onOperatorProfileImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.type && !isProfileImageMimeAllowedForCore(file.type)) {
+      setOperatorAvatarError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
+      return;
+    }
+    if (file.size > PROFILE_IMAGE_MAX_BYTES) {
+      setOperatorAvatarError(
+        `Image must be ${PROFILE_IMAGE_MAX_BYTES / 1024} KB or smaller.`,
+      );
+      return;
+    }
+    const gen = ++genesisAvatarReadGenRef.current;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (gen !== genesisAvatarReadGenRef.current) return;
+      const data = reader.result;
+      if (typeof data !== "string") return;
+      const head = /^data:([^;,]+)/i.exec(data);
+      const mime = head ? normalizeProfileImageMimeForCore(head[1]) : "";
+      if (!isProfileImageMimeAllowedForCore(mime)) {
+        setOperatorAvatarError("Use PNG, JPEG, WebP, or GIF (same types Core accepts).");
+        return;
+      }
+      setGenesisOperatorAvatarDataUrl(data);
+      setOperatorAvatarError(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearOperatorProfileImage() {
+    genesisAvatarReadGenRef.current += 1;
+    setGenesisOperatorAvatarDataUrl("");
+    setOperatorAvatarError(null);
+    if (operatorAvatarInputRef.current) operatorAvatarInputRef.current.value = "";
   }
 
   const coreBaseTrimmed = coreBaseUrl?.trim() ?? "";
@@ -309,12 +411,62 @@ export function GenesisNoticeModal({
     }
   }
 
-  const backDisabled = currentStep <= 1;
-  const nextDisabled =
-    currentStep >= GENESIS_WIZARD_STEP_COUNT ||
+  async function handleGenesisComplete() {
+    if (!coreBaseTrimmed || !genesisChallengeId) return;
+    if (genesisOpsBlocked) return;
+    const rootName = networkLabel.trim();
+    if (!rootName || rootOrgNameHasDot) {
+      setGenesisCompleteError("Fix the root organization name before completing.");
+      return;
+    }
+    if (!isEd25519PubkeyHex(operatorPubkeyHex) || !isEd25519PubkeyHex(orgSigningPubkeyHex)) {
+      setGenesisCompleteError(
+        "Username and organization signing keys must each be 64 hex characters (Ed25519 public key).",
+      );
+      return;
+    }
+    setGenesisCompleteError(null);
+    setGenesisCompleteLoading(true);
+    try {
+      const profileUrl = genesisOperatorAvatarDataUrl.trim();
+      const profileParts = profileUrl ? dataUrlToBase64Payload(profileUrl) : null;
+      const svgTrim = networkLogoSvgText?.trim();
+      await postGenesisComplete(coreBaseTrimmed, {
+        challenge_id: genesisChallengeId.toLowerCase(),
+        subject_signing_pubkey_hex: operatorPubkeyHex.replace(/[^0-9a-fA-F]/g, "").toLowerCase(),
+        root_organization_name: rootName,
+        root_organization_signing_public_key_hex: orgSigningPubkeyHex
+          .replace(/[^0-9a-fA-F]/g, "")
+          .toLowerCase(),
+        operator_display_name: operatorDisplayName.trim() || undefined,
+        root_organization_logo_svg: svgTrim && svgTrim.toLowerCase().includes("<svg") ? svgTrim : undefined,
+        bootstrap_operator_profile_image_base64: profileParts?.base64,
+        bootstrap_operator_profile_image_mime: profileParts?.mime,
+      });
+      setGenesisCompleteSuccess(true);
+      onGenesisCompleteSuccess?.();
+    } catch (e: unknown) {
+      setGenesisCompleteError(formatClientError(e));
+    } finally {
+      setGenesisCompleteLoading(false);
+    }
+  }
+
+  const backDisabled =
+    currentStep <= 1 || genesisCompleteLoading || genesisCompleteSuccess;
+  const primaryFooterDisabled =
+    genesisCompleteSuccess ||
+    genesisCompleteLoading ||
     (currentStep === 2 && rootOrgNameHasDot) ||
     (currentStep === 3 && !step3BothFilled) ||
-    (currentStep === 4 && !genesisChallengeVerified);
+    (currentStep === 4 && !genesisChallengeVerified) ||
+    (currentStep === 5 &&
+      (genesisOpsBlocked ||
+        !genesisChallengeId ||
+        !isEd25519PubkeyHex(operatorPubkeyHex) ||
+        !isEd25519PubkeyHex(orgSigningPubkeyHex) ||
+        !networkLabel.trim() ||
+        rootOrgNameHasDot));
 
   return (
     <div
@@ -497,11 +649,64 @@ export function GenesisNoticeModal({
           {currentStep === 3 && (
             <div className="space-y-4">
               <p className="text-sm leading-relaxed text-[var(--modulr-text-muted)]">
-                Enter the Ed25519 <strong className="text-[var(--modulr-text)]">public key</strong>{" "}
-                (hex) for this bootstrap username, and the{" "}
-                <strong className="text-[var(--modulr-text)]">username</strong> label you want
-                shown. Private keys stay in Keymaster — paste only the public key here.
+                Add a <strong className="text-[var(--modulr-text)]">profile picture</strong> for
+                this bootstrap operator (chosen only for this wizard; it is sent to Core on
+                complete). Then enter the Ed25519{" "}
+                <strong className="text-[var(--modulr-text)]">public key</strong> (hex) and{" "}
+                <strong className="text-[var(--modulr-text)]">username</strong>. Private keys stay
+                in Keymaster — paste only the public key here.
               </p>
+              <div className="border-t border-[var(--modulr-glass-border)] pt-4">
+                <p className={`${fieldLabel} mb-3`}>Profile picture</p>
+                <div className="flex flex-wrap items-start gap-4">
+                  <div
+                    className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--modulr-glass-border)] bg-black/20"
+                    aria-hidden={!genesisOperatorAvatarDataUrl}
+                  >
+                    {genesisOperatorAvatarDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- data URL from user file
+                      <img
+                        src={genesisOperatorAvatarDataUrl}
+                        alt=""
+                        className="size-full object-cover"
+                      />
+                    ) : (
+                      <span className="px-2 text-center text-[10px] text-[var(--modulr-text-muted)]">
+                        No image
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <input
+                      ref={operatorAvatarInputRef}
+                      id="genesis-operator-avatar"
+                      type="file"
+                      accept={PROFILE_IMAGE_FILE_ACCEPT}
+                      className="block w-full text-xs text-[var(--modulr-text-muted)] file:mr-3 file:rounded-lg file:border file:border-[var(--modulr-glass-border)] file:bg-[var(--modulr-glass-fill)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--modulr-text)]"
+                      onChange={onOperatorProfileImageChange}
+                    />
+                    {operatorAvatarError ? (
+                      <p className="text-xs font-medium text-red-400/90" role="alert">
+                        {operatorAvatarError}
+                      </p>
+                    ) : (
+                      <p className="text-[10px] leading-snug text-[var(--modulr-text-muted)]">
+                        Required to continue. PNG, JPEG, WebP, or GIF (Core allowlist). Max{" "}
+                        {PROFILE_IMAGE_MAX_BYTES / 1024} KB.
+                      </p>
+                    )}
+                    {genesisOperatorAvatarDataUrl ? (
+                      <button
+                        type="button"
+                        onClick={clearOperatorProfileImage}
+                        className="text-xs font-medium text-[var(--modulr-text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--modulr-text)]"
+                      >
+                        Remove picture
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
               <div>
                 <label htmlFor="genesis-username-pk" className={fieldLabel}>
                   Public key (hex)
@@ -762,10 +967,17 @@ export function GenesisNoticeModal({
                 </p>
               </div>
 
-              <p className="text-xs text-[var(--modulr-text-muted)]">
-                <span className="font-mono">Complete</span> is not wired yet — no request is sent to
-                Core from this screen.
-              </p>
+              {genesisCompleteSuccess ? (
+                <p className="text-sm font-medium text-emerald-400/90" role="status" aria-live="polite">
+                  Genesis saved. Waiting for Core to refresh — this dialog will close shortly.
+                </p>
+              ) : null}
+
+              {genesisCompleteError ? (
+                <p className="text-sm font-medium text-red-400/90" role="alert" aria-live="polite">
+                  {genesisCompleteError}
+                </p>
+              ) : null}
             </div>
           )}
         </div>
@@ -814,15 +1026,27 @@ export function GenesisNoticeModal({
               </button>
               <button
                 type="button"
-                disabled={nextDisabled}
-                onClick={goNext}
+                disabled={primaryFooterDisabled}
+                onClick={() => {
+                  if (currentStep === GENESIS_WIZARD_STEP_COUNT) {
+                    void handleGenesisComplete();
+                  } else {
+                    goNext();
+                  }
+                }}
                 className={
-                  nextDisabled
+                  primaryFooterDisabled
                     ? "rounded-lg border border-[var(--modulr-glass-border)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--modulr-text-muted)] opacity-50 cursor-not-allowed"
                     : "rounded-lg border border-[var(--modulr-accent)]/40 bg-[var(--modulr-accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--modulr-accent)] transition-colors hover:bg-[var(--modulr-accent)]/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--modulr-accent)]"
                 }
               >
-                {currentStep >= GENESIS_WIZARD_STEP_COUNT ? "Complete" : "Next"}
+                {currentStep >= GENESIS_WIZARD_STEP_COUNT
+                  ? genesisCompleteSuccess
+                    ? "Submitted"
+                    : genesisCompleteLoading
+                      ? "Completing…"
+                      : "Complete"
+                  : "Next"}
               </button>
             </div>
           </div>

@@ -42,6 +42,12 @@ def wire_error_for_genesis_completion(exc: GenesisCompletionError) -> ErrorCode:
         return ErrorCode.PUBLIC_KEY_INVALID
     if "operator_display_name" in msg:
         return ErrorCode.INVALID_REQUEST
+    if (
+        "root_organization_logo_svg" in msg
+        or "bootstrap operator profile" in msg
+        or "bootstrap_operator_profile_image" in msg
+    ):
+        return ErrorCode.INVALID_REQUEST
     if "already bound" in msg:
         return ErrorCode.NAME_ALREADY_BOUND
     return ErrorCode.INVALID_REQUEST

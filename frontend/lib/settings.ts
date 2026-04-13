@@ -21,9 +21,45 @@ export type AppSettings = {
    * Must match the `module_id` you report for. Dev only; stored in localStorage.
    */
   methodsDevEd25519SeedHex: string;
+  /**
+   * Optional profile image (data URL) for the shell Settings profile — **browser only** until Core
+   * exposes upload. Large strings are capped in `normalizeSettings`.
+   */
+  profileAvatarDataUrl: string;
 };
 
 export const SETTINGS_STORAGE_KEY = "modulr.customer-ui.settings";
+
+/** Max file size before we store a data URL in localStorage (same cap in Settings + Genesis step 3). */
+export const PROFILE_IMAGE_MAX_BYTES = 256 * 1024;
+
+/**
+ * Raster types accepted by Core `POST /genesis/complete` (operator profile image).
+ * SVG and other `image/*` types are rejected server-side; keep the UI aligned.
+ */
+export const PROFILE_IMAGE_ALLOWED_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
+
+/** `accept` string for `<input type="file">` (includes `image/jpg` for picky clients). */
+export const PROFILE_IMAGE_FILE_ACCEPT =
+  "image/png,image/jpeg,image/jpg,image/webp,image/gif";
+
+export function normalizeProfileImageMimeForCore(mime: string): string {
+  const m = mime.trim().toLowerCase();
+  return m === "image/jpg" ? "image/jpeg" : m;
+}
+
+export function isProfileImageMimeAllowedForCore(mime: string): boolean {
+  const n = normalizeProfileImageMimeForCore(mime);
+  return (PROFILE_IMAGE_ALLOWED_MIME_TYPES as readonly string[]).includes(n);
+}
+
+/** Max persisted length for `profileAvatarDataUrl` (~512 KB string budget). */
+const PROFILE_AVATAR_DATA_URL_MAX_CHARS = 520_000;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   coreEndpoints: ["http://127.0.0.1:8000"],
@@ -31,6 +67,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   backgroundEnabled: true,
   backgroundPreset: "fireflies",
   methodsDevEd25519SeedHex: "",
+  profileAvatarDataUrl: "",
 };
 
 export function normalizeSettings(raw: unknown): AppSettings {
@@ -81,12 +118,19 @@ export function normalizeSettings(raw: unknown): AppSettings {
     methodsDevEd25519SeedHex = t;
   }
 
+  let profileAvatarDataUrl = DEFAULT_SETTINGS.profileAvatarDataUrl;
+  const avatarRaw = o.profileAvatarDataUrl;
+  if (typeof avatarRaw === "string" && avatarRaw.startsWith("data:") && avatarRaw.length <= PROFILE_AVATAR_DATA_URL_MAX_CHARS) {
+    profileAvatarDataUrl = avatarRaw;
+  }
+
   return {
     coreEndpoints: coreEndpoints.length ? coreEndpoints : [...DEFAULT_SETTINGS.coreEndpoints],
     colorMode,
     backgroundEnabled,
     backgroundPreset,
     methodsDevEd25519SeedHex,
+    profileAvatarDataUrl,
   };
 }
 

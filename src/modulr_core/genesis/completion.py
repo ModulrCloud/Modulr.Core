@@ -15,6 +15,13 @@ from modulr_core.validation.hex_codec import InvalidHexEncoding, decode_hex_fixe
 # Max seconds after challenge consume during which ``complete`` is allowed.
 GENESIS_COMPLETION_WINDOW_SECONDS = 900
 
+# Branding limits (keep in sync with ``CoreGenesisRepository`` and the UI).
+_ROOT_ORG_LOGO_SVG_MAX_UTF8_BYTES = 512 * 1024
+_OPERATOR_PROFILE_IMAGE_MAX_BYTES = 256 * 1024
+_ALLOWED_PROFILE_IMAGE_MIMES = frozenset(
+    {"image/png", "image/jpeg", "image/webp", "image/gif"},
+)
+
 
 class GenesisCompletionError(Exception):
     """Invalid completion request or inconsistent genesis state."""
@@ -94,6 +101,47 @@ def _validate_operator_display_name(raw: str | None) -> str | None:
     return s
 
 
+def _validate_root_org_logo_svg_for_completion(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    data = raw.encode("utf-8")
+    if len(data) > _ROOT_ORG_LOGO_SVG_MAX_UTF8_BYTES:
+        raise GenesisCompletionError(
+            f"root_organization_logo_svg must be at most "
+            f"{_ROOT_ORG_LOGO_SVG_MAX_UTF8_BYTES} UTF-8 bytes",
+        )
+    head = data[:8192].lower()
+    if b"<svg" not in head:
+        raise GenesisCompletionError(
+            "root_organization_logo_svg must be SVG markup containing an <svg> element",
+        )
+    return raw
+
+
+def _validate_operator_profile_for_completion(
+    image: bytes | None,
+    mime: str | None,
+) -> tuple[bytes | None, str | None]:
+    if image is None and mime is None:
+        return None, None
+    if image is None or mime is None:
+        raise GenesisCompletionError(
+            "operator profile image and MIME type must both be set or both omitted",
+        )
+    if len(image) > _OPERATOR_PROFILE_IMAGE_MAX_BYTES:
+        raise GenesisCompletionError(
+            f"bootstrap operator profile image must be at most "
+            f"{_OPERATOR_PROFILE_IMAGE_MAX_BYTES} bytes",
+        )
+    m = mime.strip().lower()
+    if m not in _ALLOWED_PROFILE_IMAGE_MIMES:
+        raise GenesisCompletionError(
+            "bootstrap_operator_profile_image_mime must be one of: "
+            + ", ".join(sorted(_ALLOWED_PROFILE_IMAGE_MIMES)),
+        )
+    return image, m
+
+
 def _binding_matches_existing(
     row: dict[str, Any],
     *,
@@ -117,6 +165,9 @@ def complete_genesis(
     root_organization_name: str,
     root_organization_signing_public_key_hex: str,
     operator_display_name: str | None,
+    root_organization_logo_svg: str | None = None,
+    operator_profile_image: bytes | None = None,
+    operator_profile_image_mime: str | None = None,
 ) -> None:
     """
     Atomically complete the genesis wizard (caller commits).
@@ -141,6 +192,11 @@ def complete_genesis(
         root_organization_signing_public_key_hex: Org Ed25519 public key hex;
             stored as ``name_bindings.resolved_id``.
         operator_display_name: Optional operator display string (e.g. ``Chris``).
+        root_organization_logo_svg: Optional SVG source for the root org header logo.
+        operator_profile_image: Optional raster bytes for the bootstrap operator
+            profile picture.
+        operator_profile_image_mime: MIME type for ``operator_profile_image``
+            (e.g. ``image/png``); must be set when ``operator_profile_image`` is set.
 
     Raises:
         GenesisCompletionError: Validation or state errors.
@@ -178,6 +234,11 @@ def complete_genesis(
         root_organization_signing_public_key_hex,
     )
     display = _validate_operator_display_name(operator_display_name)
+    logo_svg = _validate_root_org_logo_svg_for_completion(root_organization_logo_svg)
+    prof_img, prof_mime = _validate_operator_profile_for_completion(
+        operator_profile_image,
+        operator_profile_image_mime,
+    )
 
     existing = name_repo.get_by_name(root_label)
     if existing is not None:
@@ -198,6 +259,12 @@ def complete_genesis(
     genesis_repo.set_bootstrap_signing_pubkey_hex(pubkey_hex=subj, updated_at=now)
     genesis_repo.set_bootstrap_operator_display_name(
         display_name=display,
+        updated_at=now,
+    )
+    genesis_repo.set_genesis_root_org_logo_svg(svg_markup=logo_svg, updated_at=now)
+    genesis_repo.set_bootstrap_operator_profile_image(
+        image=prof_img,
+        mime=prof_mime,
         updated_at=now,
     )
     genesis_repo.set_genesis_complete(complete=True, updated_at=now)
