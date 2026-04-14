@@ -14,7 +14,12 @@ class EntityProfileBrandingRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def get(self, *, entity_kind: EntityKind, entity_lookup: str) -> dict[str, Any] | None:
+    def get(
+        self,
+        *,
+        entity_kind: EntityKind,
+        entity_lookup: str,
+    ) -> dict[str, Any] | None:
         cur = self._conn.execute(
             """
             SELECT entity_kind, entity_lookup, logo_svg, profile_image,
@@ -70,5 +75,11 @@ class EntityProfileBrandingRepository:
                 signing_public_key_hex = excluded.signing_public_key_hex,
                 updated_at = excluded.updated_at
             """,
-            (entity_lookup, profile_image, profile_image_mime, signing_public_key_hex, updated_at),
+            (
+                entity_lookup,
+                profile_image,
+                profile_image_mime,
+                signing_public_key_hex,
+                updated_at,
+            ),
         )
