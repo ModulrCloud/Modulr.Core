@@ -15,6 +15,7 @@ from modulr_core.clock import EpochClock
 from modulr_core.config.schema import Settings
 from modulr_core.errors.codes import ErrorCode, SuccessCode
 from modulr_core.errors.exceptions import InvalidHexEncoding, WireValidationError
+from modulr_core.genesis.local_invoke import genesis_branding_payload
 from modulr_core.http.envelope import success_response_envelope
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.messages.wire_method_catalog import (
@@ -684,6 +685,38 @@ def handle_get_protocol_methods(
         success_code=SuccessCode.PROTOCOL_METHODS_RETURNED,
         detail="Protocol method catalog.",
         payload=build_protocol_methods_payload(),
+        clock=clock,
+    )
+
+
+def handle_get_core_genesis_branding(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    """
+    Return persisted genesis branding for this Core instance (signed wire).
+
+    Same fields as ``GET /genesis/branding``: root org SVG, bootstrap operator
+    profile image (base64 + MIME), labels, and ``genesis_complete``.
+    """
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    if p:
+        raise WireValidationError(
+            "get_core_genesis_branding expects an empty payload object",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    body = genesis_branding_payload(conn=conn)
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_core_genesis_branding_response",
+        success_code=SuccessCode.CORE_GENESIS_BRANDING_RETURNED,
+        detail="Core genesis branding snapshot.",
+        payload=body,
         clock=clock,
     )
 

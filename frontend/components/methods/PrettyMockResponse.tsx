@@ -145,8 +145,86 @@ function EnvelopeStrip({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function GenericKeyValueList({ data }: { data: Record<string, unknown> }) {
-  const entries = Object.entries(data);
+const BRANDING_VISUAL_OMIT_KEYS: ReadonlySet<string> = new Set([
+  "logo_svg",
+  "root_organization_logo_svg",
+  "profile_image_base64",
+  "operator_profile_image_base64",
+]);
+
+function extractBrandingVisuals(payload: Record<string, unknown>): {
+  logoSvg: string | null;
+  imageDataUrl: string | null;
+} {
+  const logoSvg =
+    (typeof payload.logo_svg === "string" && payload.logo_svg.trim() !== ""
+      ? payload.logo_svg
+      : null) ??
+    (typeof payload.root_organization_logo_svg === "string" &&
+    payload.root_organization_logo_svg.trim() !== ""
+      ? payload.root_organization_logo_svg
+      : null);
+  const b64 =
+    (typeof payload.profile_image_base64 === "string" && payload.profile_image_base64.trim() !== ""
+      ? payload.profile_image_base64
+      : null) ??
+    (typeof payload.operator_profile_image_base64 === "string" &&
+    payload.operator_profile_image_base64.trim() !== ""
+      ? payload.operator_profile_image_base64
+      : null);
+  const mimeRaw =
+    (typeof payload.profile_image_mime === "string" && payload.profile_image_mime
+      ? payload.profile_image_mime
+      : null) ??
+    (typeof payload.operator_profile_image_mime === "string" && payload.operator_profile_image_mime
+      ? payload.operator_profile_image_mime
+      : null);
+  const mime = mimeRaw && mimeRaw.startsWith("image/") ? mimeRaw : null;
+  const imageDataUrl = b64 && mime ? `data:${mime};base64,${b64}` : null;
+  return { logoSvg, imageDataUrl };
+}
+
+function BrandingPayloadPreview({ payload }: { payload: Record<string, unknown> }) {
+  const { logoSvg, imageDataUrl } = extractBrandingVisuals(payload);
+  if (!logoSvg && !imageDataUrl) return null;
+  return (
+    <div className="mb-6 space-y-4 rounded-lg border border-[var(--modulr-accent)]/20 bg-[var(--modulr-page-bg)]/20 p-4">
+      {logoSvg ? (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--modulr-text-muted)]">
+            SVG logo preview
+          </p>
+          <div
+            className="modulr-scrollbar mt-2 max-h-56 overflow-auto rounded-md border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/50 p-3 [&_svg]:max-h-48 [&_svg]:w-auto"
+            dangerouslySetInnerHTML={{ __html: logoSvg }}
+          />
+        </div>
+      ) : null}
+      {imageDataUrl ? (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--modulr-text-muted)]">
+            Raster image preview
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element -- data URL from wire payload */}
+          <img
+            src={imageDataUrl}
+            alt="Profile or branding raster from payload"
+            className="mt-2 max-h-56 max-w-full rounded-md border border-[var(--modulr-glass-border)] object-contain"
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GenericKeyValueList({
+  data,
+  omitKeys,
+}: {
+  data: Record<string, unknown>;
+  omitKeys?: ReadonlySet<string>;
+}) {
+  const entries = Object.entries(data).filter(([k]) => !omitKeys?.has(k));
   return (
     <ul className="space-y-4">
       {entries.map(([key, value]) => (
@@ -186,13 +264,18 @@ function GenericKeyValueList({ data }: { data: Record<string, unknown> }) {
 export function PrettyMockResponse({ data }: { data: Record<string, unknown> }) {
   if (isLiveSuccessEnvelope(data)) {
     const payload = data.payload as Record<string, unknown>;
+    const { logoSvg, imageDataUrl } = extractBrandingVisuals(payload);
+    const brandingOmit = logoSvg || imageDataUrl ? BRANDING_VISUAL_OMIT_KEYS : undefined;
     return (
       <div>
         <EnvelopeStrip data={data} />
         {isMethodCatalogPayload(payload) ? (
           <MethodCatalogBody payload={payload} />
         ) : (
-          <GenericKeyValueList data={payload} />
+          <>
+            <BrandingPayloadPreview payload={payload} />
+            <GenericKeyValueList data={payload} omitKeys={brandingOmit} />
+          </>
         )}
         <details className="mt-4">
           <summary className="cursor-pointer text-xs font-medium text-[var(--modulr-text-muted)]">
@@ -210,5 +293,12 @@ export function PrettyMockResponse({ data }: { data: Record<string, unknown> }) 
     return <MethodCatalogBody payload={data} />;
   }
 
-  return <GenericKeyValueList data={data} />;
+  const { logoSvg, imageDataUrl } = extractBrandingVisuals(data);
+  const brandingOmit = logoSvg || imageDataUrl ? BRANDING_VISUAL_OMIT_KEYS : undefined;
+  return (
+    <>
+      <BrandingPayloadPreview payload={data} />
+      <GenericKeyValueList data={data} omitKeys={brandingOmit} />
+    </>
+  );
 }

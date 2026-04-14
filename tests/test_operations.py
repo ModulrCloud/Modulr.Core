@@ -165,6 +165,70 @@ def test_get_protocol_methods_rejects_non_empty_payload() -> None:
     assert ei.value.code is ErrorCode.PAYLOAD_INVALID
 
 
+def test_get_core_genesis_branding_matches_http_snapshot() -> None:
+    """Same branding dict shape as GET /genesis/branding."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_core_genesis_branding",
+        {},
+        "gcgb-1",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.CORE_GENESIS_BRANDING_RETURNED)
+    assert out["operation"] == "get_core_genesis_branding_response"
+    pl = out["payload"]
+    assert pl["genesis_complete"] is False
+    assert pl["root_organization_label"] is None
+    assert pl["bootstrap_operator_display_name"] is None
+    assert pl["root_organization_logo_svg"] is None
+    assert pl["operator_profile_image_base64"] is None
+    assert pl["operator_profile_image_mime"] is None
+
+
+def test_get_organization_logo_not_found_before_genesis() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_organization_logo",
+        {"organization_key": "nope"},
+        "gol-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_get_user_profile_image_not_found_before_genesis() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_user_profile_image",
+        {"user_handle": "nobody"},
+        "gup-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_get_core_genesis_branding_rejects_non_empty_payload() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_core_genesis_branding",
+        {"x": 1},
+        "gcgb-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
 def test_get_module_methods_core_lists_wire_operations() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
