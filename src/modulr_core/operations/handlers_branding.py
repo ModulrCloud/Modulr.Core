@@ -104,6 +104,31 @@ def _user_lookup_p(pk_hex: str) -> str:
     return f"p:{normalize_ed25519_public_key_hex(pk_hex)}"
 
 
+def _organization_key_bound_to_pubkey(
+    conn: sqlite3.Connection,
+    *,
+    norm_name: str,
+    org_pk: str,
+) -> bool:
+    """
+    Return whether ``norm_name`` is bound to ``org_pk`` in ``name_bindings``.
+
+    Compares normalized org names so casing matches ``normalize_organization_key_wire``.
+    """
+    npk = normalize_ed25519_public_key_hex(org_pk)
+    nb = NameBindingsRepository(conn).get_by_name(norm_name)
+    if nb is not None:
+        return str(nb["resolved_id"]).strip().lower() == npk
+    for row in NameBindingsRepository(conn).list_by_resolved_id(npk):
+        raw_name = str(row["name"])
+        try:
+            if normalize_organization_key_wire(raw_name) == norm_name:
+                return True
+        except WireValidationError:
+            continue
+    return False
+
+
 def _validate_logo_svg_wire(raw: str | None) -> str | None:
     if raw is None:
         return None
@@ -363,16 +388,8 @@ def handle_get_organization_logo(
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
-    has_key = (
-        p.get("organization_key") is not None
-        and str(p.get("organization_key", "")).strip()
-    )
-    has_pk = (
-        p.get("organization_signing_public_key_hex") is not None
-        and str(
-            p.get("organization_signing_public_key_hex", ""),
-        ).strip()
-    )
+    has_key = bool(str(p.get("organization_key", "")).strip())
+    has_pk = bool(str(p.get("organization_signing_public_key_hex", "")).strip())
     if has_key == has_pk:
         raise WireValidationError(
             "provide exactly one of organization_key or "
@@ -409,13 +426,8 @@ def handle_get_user_profile_image(
     del settings
     env = validated.envelope
     p: dict[str, Any] = env["payload"]
-    has_h = p.get("user_handle") is not None and str(p.get("user_handle", "")).strip()
-    has_pk = (
-        p.get("user_signing_public_key_hex") is not None
-        and str(
-            p.get("user_signing_public_key_hex", ""),
-        ).strip()
-    )
+    has_h = bool(str(p.get("user_handle", "")).strip())
+    has_pk = bool(str(p.get("user_signing_public_key_hex", "")).strip())
     if has_h == has_pk:
         raise WireValidationError(
             "provide exactly one of user_handle or user_signing_public_key_hex",
@@ -488,13 +500,30 @@ def handle_set_organization_logo(
         norm_name = normalize_organization_key_wire(opt_name)
 
     sender = env["sender_public_key"]
+    is_bootstrap = sender_is_effective_bootstrap(
+        sender,
+        settings=settings,
+        conn=conn,
+    )
     if normalize_ed25519_public_key_hex(sender) != normalize_ed25519_public_key_hex(
         org_pk,
-    ) and not sender_is_effective_bootstrap(sender, settings=settings, conn=conn):
+    ) and not is_bootstrap:
         raise WireValidationError(
             "sender must match organization_signing_public_key_hex or be bootstrap",
             code=ErrorCode.UNAUTHORIZED,
         )
+
+    if norm_name is not None and not is_bootstrap:
+        if not _organization_key_bound_to_pubkey(
+            conn,
+            norm_name=norm_name,
+            org_pk=org_pk,
+        ):
+            raise WireValidationError(
+                "organization_key is not bound to organization_signing_public_key_hex "
+                "in Core name bindings",
+                code=ErrorCode.IDENTITY_MISMATCH,
+            )
 
     if norm_name is not None:
         lookup = _org_lookup_k(norm_name)
@@ -565,18 +594,22 @@ def handle_set_user_profile_image(
 
     now = int(clock())
     repo = EntityProfileBrandingRepository(conn)
-    if handle_norm is not None:
-        lookup = _user_lookup_h(handle_norm)
-    else:
-        lookup = _user_lookup_p(user_pk)
-
+    npk = normalize_ed25519_public_key_hex(user_pk)
     repo.upsert_user(
-        entity_lookup=lookup,
+        entity_lookup=_user_lookup_p(user_pk),
         profile_image=img_bytes,
         profile_image_mime=mime,
-        signing_public_key_hex=normalize_ed25519_public_key_hex(user_pk),
+        signing_public_key_hex=npk,
         updated_at=now,
     )
+    if handle_norm is not None:
+        repo.upsert_user(
+            entity_lookup=_user_lookup_h(handle_norm),
+            profile_image=img_bytes,
+            profile_image_mime=mime,
+            signing_public_key_hex=npk,
+            updated_at=now,
+        )
 
     if _is_genesis_bootstrap_user(conn, user_pk=user_pk):
         CoreGenesisRepository(conn).set_bootstrap_operator_profile_image(

@@ -130,8 +130,9 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         description=(
             "Requires organization_signing_public_key_hex and logo_svg (or null to "
             "clear). Optional organization_key scopes the row. Sender must match the "
-            "org key or be bootstrap. Updates genesis root org logo when this is the "
-            "genesis root org."
+            "org key or be bootstrap; if organization_key is set and the sender is not "
+            "bootstrap, Core requires name_bindings to bind that name to the org key. "
+            "Updates genesis root org logo when this is the genesis root org."
         ),
         payload_contract="organization_logo_set",
         protocol_surface=True,
