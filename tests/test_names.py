@@ -45,7 +45,13 @@ def test_validate_modulr_resolve_name_rejects(raw: str) -> None:
 
 @pytest.mark.parametrize(
     "raw",
-    ["modulr.network", "api.example.com", "a.b.co"],
+    [
+        "modulr.network",
+        "modulr.core",
+        "acme",
+        "x",
+        "a.b",
+    ],
 )
 def test_validate_modulr_org_domain_accepts(raw: str) -> None:
     assert validate_modulr_org_domain(raw) == raw.strip()
@@ -56,7 +62,9 @@ def test_validate_modulr_org_domain_accepts(raw: str) -> None:
     [
         "@chris",
         "user@modulr.network",
-        "modulr",
+        "api.example.com",
+        "a.b.co",
+        "labs.acme.network",
         "",
     ],
 )

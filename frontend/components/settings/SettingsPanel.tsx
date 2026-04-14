@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ChangeEvent } from "react";
 import { useState } from "react";
 
@@ -157,42 +158,53 @@ export function SettingsPanel({
               <span className="font-mono text-[10px]">GET /genesis/branding</span>. Local uploads
               still apply in-browser until a signed profile-update flow exists.
             </p>
-            <div className="flex items-start gap-4 rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 p-4">
-              <div
-                className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-lg font-bold text-[var(--modulr-text-muted)]"
-                aria-hidden
+            <div className="overflow-hidden rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20">
+              <Link
+                href="/profile"
+                onClick={() => setSettingsOpen(false)}
+                className="group flex items-start gap-4 p-4 transition-colors hover:bg-[var(--modulr-page-bg)]/25"
               >
-                {profileAvatarSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- data URL from user file
-                  <img
-                    src={profileAvatarSrc}
-                    alt=""
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  "?"
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-[var(--modulr-text)]">
-                  {hasCoreBootstrapIdentity ? coreName : "Not signed in"}
-                </p>
-                <p className="modulr-text-muted mt-1 text-xs leading-relaxed">
-                  {hasCoreBootstrapIdentity ? (
-                    <>
-                      Bootstrap operator display name and profile image are read from Core (
-                      <span className="font-mono text-[10px]">GET /genesis/branding</span>). This
-                      is not a Keymaster or wallet session — those come later.
-                    </>
+                <div
+                  className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] text-lg font-bold text-[var(--modulr-text-muted)]"
+                  aria-hidden
+                >
+                  {profileAvatarSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- data URL from user file
+                    <img
+                      src={profileAvatarSrc}
+                      alt=""
+                      className="size-full object-cover"
+                    />
                   ) : (
-                    <>
-                      After Keymaster sign-in, your display name and session will appear here. Core
-                      will know your operator identity once genesis is complete and session wiring
-                      lands.
-                    </>
+                    "?"
                   )}
-                </p>
-                <label className={`${labelCls()} mt-3`} htmlFor="profile-avatar">
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-[var(--modulr-text)] group-hover:text-[var(--modulr-accent)]">
+                    {hasCoreBootstrapIdentity ? coreName : "Not signed in"}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-[var(--modulr-accent)]">
+                    Open public profile preview →
+                  </p>
+                  <p className="modulr-text-muted mt-1 text-xs leading-relaxed">
+                    {hasCoreBootstrapIdentity ? (
+                      <>
+                        Bootstrap operator display name and profile image are read from Core (
+                        <span className="font-mono text-[10px]">GET /genesis/branding</span>). This
+                        is not a Keymaster or wallet session — those come later.
+                      </>
+                    ) : (
+                      <>
+                        After Keymaster sign-in, your display name and session will appear here.
+                        Core will know your operator identity once genesis is complete and session
+                        wiring lands.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </Link>
+              <div className="border-t border-[var(--modulr-glass-border)] px-4 pb-4 pt-3">
+                <label className={labelCls()} htmlFor="profile-avatar">
                   Profile picture (local)
                 </label>
                 <input
@@ -243,6 +255,34 @@ export function SettingsPanel({
                     browser session (see docs). For now this is a placeholder.
                   </p>
                 ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="font-modulr-display mb-3 text-sm font-bold text-[var(--modulr-accent)]">
+              Balances (preview)
+            </h3>
+            <p className="mb-3 text-xs text-[var(--modulr-text-muted)]">
+              MDR tokens and MTR credits will appear here when the network economics API is
+              connected. Not live yet.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--modulr-text-muted)]">
+                  MDR tokens
+                </p>
+                <p className="font-modulr-display mt-1 text-lg font-bold tabular-nums text-[var(--modulr-text)]">
+                  —
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/20 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--modulr-text-muted)]">
+                  MTR credits
+                </p>
+                <p className="font-modulr-display mt-1 text-lg font-bold tabular-nums text-[var(--modulr-text)]">
+                  —
+                </p>
               </div>
             </div>
           </section>

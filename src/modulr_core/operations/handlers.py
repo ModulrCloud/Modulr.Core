@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import secrets
 import sqlite3
 from typing import Any
@@ -50,15 +49,12 @@ from modulr_core.repositories.modules import ModulesRepository
 from modulr_core.repositories.name_bindings import NameBindingsRepository
 from modulr_core.validation import canonical_json_str, decode_hex_fixed
 from modulr_core.validation.names import (
+    validate_modulr_core_registry_apex_name,
     validate_modulr_org_domain,
     validate_modulr_resolve_name,
     validate_resolved_id,
 )
 from modulr_core.version import MODULE_VERSION
-
-_MODULE_NAME_RE = re.compile(
-    r"^[a-zA-Z][a-zA-Z0-9_.-]*\.[a-zA-Z][a-zA-Z0-9_.-]+$",
-)
 _MAX_METRICS_CANONICAL_BYTES = 65_536
 _MODULE_STATE_PHASES: frozenset[str] = frozenset(
     ("running", "syncing", "degraded", "maintenance"),
@@ -518,19 +514,19 @@ def _sync_legacy_route_to_primary_dial(
 
 
 def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") -> str:
-    """Strip, validate dotted form, return lowercase canonical module id."""
+    """Strip, validate apex name (at most one dot), return lowercase canonical module id."""
     raw = require_str(p, field).strip()
     if not raw:
         raise WireValidationError(
             f"{field} must not be empty",
             code=ErrorCode.INVALID_MODULE_NAME,
         )
-    if not _MODULE_NAME_RE.match(raw):
-        raise WireValidationError(
-            f"{field} must be a dotted logical name (e.g. modulr.storage)",
-            code=ErrorCode.INVALID_MODULE_NAME,
-        )
-    return normalize_module_name(raw)
+    apex = validate_modulr_core_registry_apex_name(
+        raw,
+        field_label=field,
+        invalid_code=ErrorCode.INVALID_MODULE_NAME,
+    )
+    return normalize_module_name(apex)
 
 
 def _modulr_core_route_document(conn: sqlite3.Connection) -> dict[str, Any]:

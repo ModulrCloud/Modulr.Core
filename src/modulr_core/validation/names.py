@@ -7,9 +7,13 @@ Supported forms (MVP):
 - **``user@domain.subdomain``** — scoped identity (like a JID): local part ``@`` domain
   with at least one dot in the domain (so org-style DNS labels). Also intended for
   **Modulr.Web** and routed messages.
-- **``domain.subdomain``** — organization / zone style with no ``@`` (at least one
-  ``.`` in the name). Does not cover bare single-label org exceptions (e.g. reserved
-  ``modulr``); those can be added later.
+- **``domain.subdomain``** — organization / zone style with no ``@`` (multi-label
+  DNS-like form). Used in ``resolve_name`` for lookups (may include more than one dot).
+
+**Core registry (``register_org``, ``register_module``):** apex names only — **at most
+one** dot (single label ``acme`` or two labels ``acme.network``). Deeper paths such as
+``labs.acme.network`` are **not** registered on Core; they are delegated to the parent
+apex (same idea as DNS).
 
 Normalization: strip leading/trailing ASCII whitespace; empty after strip is invalid.
 """
@@ -34,6 +38,8 @@ _SCOPED_RE = re.compile(
 )
 
 _ORG_DOMAIN_RE = re.compile(rf"^{_DOMAIN_DOT}$")
+# register_org / register_module: at most one dot between two labels (or a single label).
+_APEX_TWO_LABELS = re.compile(rf"^{_LABEL}\.{_LABEL}$")
 
 
 _MAX_RESOLVED_ID_LEN = 512
@@ -55,18 +61,55 @@ def validate_resolved_id(raw: str) -> str:
     return s
 
 
-def validate_modulr_org_domain(name: str) -> str:
-    """Return stripped org-style domain (``domain.subdomain``), no ``@`` or handle."""
+def validate_modulr_core_registry_apex_name(
+    name: str,
+    *,
+    field_label: str,
+    invalid_code: ErrorCode,
+) -> str:
+    """Validate an apex name stored on Core (org or module): at most one dot.
+
+    Single-label (``modulr``) or two labels (``modulr.core``, ``acme.network``). More than
+    one dot is reserved for delegated names resolved by the parent apex.
+    """
     s = name.strip()
     if not s:
-        _fail("organization_name must be a non-empty string", ErrorCode.INVALID_NAME)
+        raise WireValidationError(
+            f"{field_label} must be a non-empty string",
+            code=invalid_code,
+        )
     if len(s) > 512:
-        _fail("organization_name exceeds maximum length", ErrorCode.INVALID_NAME)
-    if _ORG_DOMAIN_RE.match(s):
-        return s
-    _fail(
-        "organization_name must be a dotted domain (e.g. acme.network)",
-        ErrorCode.INVALID_NAME,
+        raise WireValidationError(
+            f"{field_label} exceeds maximum length",
+            code=invalid_code,
+        )
+    if s.count(".") > 1:
+        raise WireValidationError(
+            f"{field_label} must contain at most one dot (Core registers apex names only; "
+            "deeper labels are delegated to the parent).",
+            code=invalid_code,
+        )
+    if "." not in s:
+        if not re.fullmatch(_LABEL, s):
+            raise WireValidationError(
+                f"{field_label} must be a single DNS-style label (letters, digits, underscore; "
+                "no leading/trailing hyphen).",
+                code=invalid_code,
+            )
+    elif not _APEX_TWO_LABELS.fullmatch(s):
+        raise WireValidationError(
+            f"{field_label} must be label.label (e.g. modulr.core or acme.network).",
+            code=invalid_code,
+        )
+    return s
+
+
+def validate_modulr_org_domain(name: str) -> str:
+    """Return stripped org name for ``register_org``: apex only (at most one dot)."""
+    return validate_modulr_core_registry_apex_name(
+        name,
+        field_label="organization_name",
+        invalid_code=ErrorCode.INVALID_NAME,
     )
 
 

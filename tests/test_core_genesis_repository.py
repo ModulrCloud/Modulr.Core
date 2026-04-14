@@ -97,17 +97,20 @@ def test_core_genesis_clear_pubkey() -> None:
 
 
 def test_core_genesis_apex_domain_validation() -> None:
-    """Empty, overlong, and non-dotted apex values raise ``ValueError``."""
+    """Empty, overlong, and invalid apex values raise ``ValueError``."""
     conn = _conn()
     repo = CoreGenesisRepository(conn)
     with pytest.raises(ValueError, match="non-empty"):
         repo.set_modulr_apex_domain(apex_domain="   ", updated_at=1)
     with pytest.raises(ValueError, match="at most"):
         repo.set_modulr_apex_domain(apex_domain="x" * 254, updated_at=1)
-    with pytest.raises(ValueError, match="modulr_apex_domain must be a dotted"):
+    with pytest.raises(ValueError, match="modulr_apex_domain must be a Core apex"):
         repo.set_modulr_apex_domain(apex_domain="not a domain", updated_at=1)
-    with pytest.raises(ValueError, match="modulr_apex_domain must be a dotted"):
-        repo.set_modulr_apex_domain(apex_domain="singlelabel", updated_at=1)
+    with pytest.raises(ValueError, match="modulr_apex_domain must be a Core apex"):
+        repo.set_modulr_apex_domain(apex_domain="a.b.c", updated_at=1)
+    repo.set_modulr_apex_domain(apex_domain="singlelabel", updated_at=2)
+    conn.commit()
+    assert repo.get().modulr_apex_domain == "singlelabel"
 
 
 def test_schema_migrations_includes_007() -> None:
