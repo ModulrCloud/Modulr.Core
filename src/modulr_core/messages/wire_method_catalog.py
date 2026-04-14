@@ -79,6 +79,79 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         protocol_surface=True,
     ),
     _e(
+        "get_core_genesis_branding",
+        category="protocol",
+        group="genesis",
+        summary=(
+            "Return Modulr.Core genesis branding: org SVG logo and operator profile."
+        ),
+        description=(
+            "modulr.core only. Signed read of the same data as GET /genesis/branding: "
+            "genesis_complete, root_organization_label, "
+            "bootstrap_operator_display_name, root_organization_logo_svg (markup), "
+            "operator_profile_image_base64, operator_profile_image_mime. Inbound "
+            "payload must be an empty JSON object."
+        ),
+        payload_contract="empty_object",
+        protocol_surface=True,
+    ),
+    _e(
+        "get_organization_logo",
+        category="protocol",
+        group="branding",
+        summary="Return an org brand logo (SVG) by org name or org Ed25519 pubkey.",
+        description=(
+            "Exactly one of organization_key (single-label or dotted org domain) or "
+            "organization_signing_public_key_hex. Returns logo_svg. Matches genesis "
+            "root org when identifiers align; else uses entity_profile_branding from "
+            "set_organization_logo."
+        ),
+        payload_contract="organization_logo_get",
+        protocol_surface=True,
+    ),
+    _e(
+        "get_user_profile_image",
+        category="protocol",
+        group="branding",
+        summary="Return a user profile image (base64 + MIME) by handle or user pubkey.",
+        description=(
+            "Provide exactly one of user_handle or user_signing_public_key_hex. "
+            "Matches the bootstrap operator from genesis when identifiers align; "
+            "otherwise returns rows stored by set_user_profile_image."
+        ),
+        payload_contract="user_profile_image_get",
+        protocol_surface=True,
+    ),
+    _e(
+        "set_organization_logo",
+        category="protocol",
+        group="branding",
+        summary="Create or replace an org SVG logo for the holder org public key.",
+        description=(
+            "Requires organization_signing_public_key_hex and logo_svg (or null to "
+            "clear). Optional organization_key scopes the row. Sender must match the "
+            "org key or be bootstrap; if organization_key is set and the sender is not "
+            "bootstrap, Core requires name_bindings to bind that name to the org key. "
+            "Updates genesis root org logo when this is the genesis root org."
+        ),
+        payload_contract="organization_logo_set",
+        protocol_surface=True,
+    ),
+    _e(
+        "set_user_profile_image",
+        category="protocol",
+        group="branding",
+        summary="Create or replace a user profile image for the holder user pubkey.",
+        description=(
+            "Requires user_signing_public_key_hex; profile_image_base64 and "
+            "profile_image_mime together or both null. Optional user_handle. Sender "
+            "must match the user key or be bootstrap. Updates genesis operator image "
+            "when the key is the bootstrap operator."
+        ),
+        payload_contract="user_profile_image_set",
+        protocol_surface=True,
+    ),
+    _e(
         "get_module_methods",
         category="validator",
         group="discovery",

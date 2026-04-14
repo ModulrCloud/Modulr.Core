@@ -165,6 +165,193 @@ def test_get_protocol_methods_rejects_non_empty_payload() -> None:
     assert ei.value.code is ErrorCode.PAYLOAD_INVALID
 
 
+def test_get_core_genesis_branding_matches_http_snapshot() -> None:
+    """Same branding dict shape as GET /genesis/branding."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_core_genesis_branding",
+        {},
+        "gcgb-1",
+    )
+    out = dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert out["code"] == str(SuccessCode.CORE_GENESIS_BRANDING_RETURNED)
+    assert out["operation"] == "get_core_genesis_branding_response"
+    pl = out["payload"]
+    assert pl["genesis_complete"] is False
+    assert pl["root_organization_label"] is None
+    assert pl["bootstrap_operator_display_name"] is None
+    assert pl["root_organization_logo_svg"] is None
+    assert pl["operator_profile_image_base64"] is None
+    assert pl["operator_profile_image_mime"] is None
+
+
+def test_get_organization_logo_not_found_before_genesis() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_organization_logo",
+        {"organization_key": "nope"},
+        "gol-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_get_organization_logo_rejects_both_identifiers() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    req = make_validated_inbound(
+        pk,
+        "get_organization_logo",
+        {
+            "organization_key": "acme",
+            "organization_signing_public_key_hex": pub,
+        },
+        "gol-both",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_get_user_profile_image_rejects_both_identifiers() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    req = make_validated_inbound(
+        pk,
+        "get_user_profile_image",
+        {"user_handle": "alice", "user_signing_public_key_hex": pub},
+        "gup-both",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_set_user_profile_image_dual_key_allows_get_by_pubkey() -> None:
+    """After set with handle, get by pubkey must resolve the same entity row data."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    req_set = make_validated_inbound(
+        pk,
+        "set_user_profile_image",
+        {
+            "user_signing_public_key_hex": pub,
+            "user_handle": "alice",
+            "profile_image_base64": b64,
+            "profile_image_mime": "image/png",
+        },
+        "sup-dual",
+    )
+    dispatch_operation(req_set, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req_get = make_validated_inbound(
+        pk,
+        "get_user_profile_image",
+        {"user_signing_public_key_hex": pub},
+        "gup-by-pk",
+    )
+    out = dispatch_operation(
+        req_get,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    assert out["code"] == str(SuccessCode.USER_PROFILE_IMAGE_RETURNED)
+    pl = out["payload"]
+    assert pl["profile_image_base64"] == b64
+    assert pl["profile_image_mime"] == "image/png"
+
+
+def test_set_organization_logo_rejects_org_key_not_bound_to_claimed_pubkey() -> None:
+    """Non-bootstrap cannot set k:<name> unless name_bindings ties name to org_pk."""
+    alice = Ed25519PrivateKey.generate()
+    bob = Ed25519PrivateKey.generate()
+    alice_pub = alice.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    bob_pub = bob.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    ).hex()
+    conn = _conn()
+    NameBindingsRepository(conn).insert(
+        name="myorg",
+        resolved_id=alice_pub,
+        route_json=None,
+        metadata_json=None,
+        created_at=1,
+    )
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>'
+    req = make_validated_inbound(
+        bob,
+        "set_organization_logo",
+        {
+            "organization_signing_public_key_hex": bob_pub,
+            "organization_key": "myorg",
+            "logo_svg": svg,
+        },
+        "sol-mismatch",
+    )
+    # With empty bootstrap + dev_mode, every sender is treated as bootstrap and the
+    # name-binding check is skipped. Restrict bootstrap to another key so Bob is not.
+    settings = replace(
+        _settings(),
+        dev_mode=False,
+        bootstrap_public_keys=(alice_pub,),
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=settings, conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_MISMATCH
+
+
+def test_get_user_profile_image_not_found_before_genesis() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_user_profile_image",
+        {"user_handle": "nobody"},
+        "gup-1",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_get_core_genesis_branding_rejects_non_empty_payload() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_core_genesis_branding",
+        {"x": 1},
+        "gcgb-bad",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
 def test_get_module_methods_core_lists_wire_operations() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

@@ -74,6 +74,11 @@ function buildInitialValuesForMethod(
 const LIVE_SIGNED_METHOD_IDS = new Set<string>([
   "get_protocol_version",
   "get_protocol_methods",
+  "get_core_genesis_branding",
+  "get_organization_logo",
+  "get_user_profile_image",
+  "set_organization_logo",
+  "set_user_profile_image",
   "lookup_module",
   "get_module_methods",
   "get_module_route",
@@ -94,7 +99,22 @@ function liveExecuteHint(methodId: string): string {
     return "Same signing path. For modulr.core returns Core wire methods; other modules return an empty list until manifests exist.";
   }
   if (methodId === "get_protocol_methods") {
-    return "Same signing path. Empty payload. Returns protocol-level methods (version surface, this method, heartbeat).";
+    return "Same signing path. Empty payload. Returns protocol_surface methods (version, discovery, genesis branding read, module state, heartbeat, …).";
+  }
+  if (methodId === "get_core_genesis_branding") {
+    return "Same signing path. Empty payload. Returns root org SVG, operator profile image (base64 + MIME), labels — same fields as GET /genesis/branding.";
+  }
+  if (methodId === "get_organization_logo") {
+    return "Same signing path. Payload: exactly one of organization_key or organization_signing_public_key_hex. Response includes logo_svg (preview in results).";
+  }
+  if (methodId === "get_user_profile_image") {
+    return "Same signing path. Payload: exactly one of user_handle or user_signing_public_key_hex. Response includes profile_image_base64 + MIME (image preview in results).";
+  }
+  if (methodId === "set_organization_logo") {
+    return "Sender must match organization_signing_public_key_hex or be bootstrap. logo_svg null clears; optional organization_key scopes the row.";
+  }
+  if (methodId === "set_user_profile_image") {
+    return "Sender must match user_signing_public_key_hex or be bootstrap. Base64 + MIME together or both empty to clear; optional user_handle.";
   }
   if (methodId === "get_module_route") {
     return "Same signing path. Returns route_detail (full JSON) and, when the doc has route_type + route strings, those flattened for convenience.";
@@ -303,6 +323,136 @@ export function MethodsMock() {
       return;
     }
 
+    if (selected.id === "get_core_genesis_branding") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      setLoading(true);
+      try {
+        const data = await executeSignedCoreOperation(base, "get_core_genesis_branding", {});
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "get_organization_logo") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const name = values.organization_key?.trim() ?? "";
+      const pk = values.organization_signing_public_key_hex?.trim() ?? "";
+      if ((name && pk) || (!name && !pk)) {
+        setError("Fill in exactly one of organization key or organization public key (hex).");
+        return;
+      }
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = name
+          ? { organization_key: name }
+          : { organization_signing_public_key_hex: pk };
+        const data = await executeSignedCoreOperation(base, "get_organization_logo", payload);
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "get_user_profile_image") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const handle = values.user_handle?.trim() ?? "";
+      const pk = values.user_signing_public_key_hex?.trim() ?? "";
+      if ((handle && pk) || (!handle && !pk)) {
+        setError("Fill in exactly one of user handle or user public key (hex).");
+        return;
+      }
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = handle
+          ? { user_handle: handle }
+          : { user_signing_public_key_hex: pk };
+        const data = await executeSignedCoreOperation(base, "get_user_profile_image", payload);
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "set_organization_logo") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const orgPk = values.organization_signing_public_key_hex?.trim() ?? "";
+      const optKey = values.organization_key?.trim() ?? "";
+      const svg = values.logo_svg?.trim() ?? "";
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = {
+          organization_signing_public_key_hex: orgPk,
+          logo_svg: svg.length > 0 ? svg : null,
+        };
+        if (optKey) payload.organization_key = optKey;
+        const data = await executeSignedCoreOperation(base, "set_organization_logo", payload);
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (selected.id === "set_user_profile_image") {
+      const base = primaryCoreBaseUrl(settings.coreEndpoints);
+      if (!base) {
+        setError("Set a Core base URL in settings.");
+        return;
+      }
+      const userPk = values.user_signing_public_key_hex?.trim() ?? "";
+      const b64 = values.profile_image_base64?.trim() ?? "";
+      const mime = values.profile_image_mime?.trim() ?? "";
+      const uh = values.user_handle?.trim() ?? "";
+      if ((b64 && !mime) || (!b64 && mime)) {
+        setError("Provide both profile image base64 and MIME type, or leave both empty to clear.");
+        return;
+      }
+      setLoading(true);
+      try {
+        const payload: Record<string, unknown> = {
+          user_signing_public_key_hex: userPk,
+          profile_image_base64: b64.length > 0 ? b64 : null,
+          profile_image_mime: mime.length > 0 ? mime : null,
+        };
+        if (uh) payload.user_handle = uh;
+        const data = await executeSignedCoreOperation(base, "set_user_profile_image", payload);
+        setResult(data);
+      } catch (e: unknown) {
+        setError(formatClientError(e));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (selected.id === "get_module_route") {
       const base = primaryCoreBaseUrl(settings.coreEndpoints);
       if (!base) {
@@ -491,15 +641,17 @@ export function MethodsMock() {
           Methods
         </h1>
         <p className="modulr-text-muted mt-4 max-w-3xl leading-relaxed">
-          Methods grouped by <span className="font-medium text-[var(--modulr-text)]">protocol</span> (version + heartbeat),{" "}
-          <span className="font-medium text-[var(--modulr-text)]">validator</span> (coordination / Core),{" "}
-          <span className="font-medium text-[var(--modulr-text)]">provider</span>, and{" "}
-          <span className="font-medium text-[var(--modulr-text)]">client</span> slices — preview of how discovery
-          JSON will be partitioned (tabs are static for now; wire catalog comes next).
+          Methods grouped by <span className="font-medium text-[var(--modulr-text)]">protocol</span> (version,
+          discovery, branding get/set, routes, registration, writes, heartbeat),{" "}
+          <span className="font-medium text-[var(--modulr-text)]">validator</span> (reads / lookups), plus{" "}
+          <span className="font-medium text-[var(--modulr-text)]">provider</span> and{" "}
+          <span className="font-medium text-[var(--modulr-text)]">client</span> placeholders.
         </p>
         <p className="modulr-text-muted mt-3 max-w-2xl text-sm leading-relaxed">
           <span className="font-medium text-[var(--modulr-text)]">get_protocol_version</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_protocol_methods</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_organization_logo</span>,{" "}
+          <span className="font-medium text-[var(--modulr-text)]">get_user_profile_image</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">lookup_module</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_methods</span>,{" "}
           <span className="font-medium text-[var(--modulr-text)]">get_module_route</span>,{" "}

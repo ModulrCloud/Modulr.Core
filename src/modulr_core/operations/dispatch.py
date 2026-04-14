@@ -11,6 +11,7 @@ from modulr_core.errors.codes import ErrorCode
 from modulr_core.errors.exceptions import WireValidationError
 from modulr_core.messages.types import ValidatedInbound
 from modulr_core.operations.handlers import (
+    handle_get_core_genesis_branding,
     handle_get_module_methods,
     handle_get_module_route,
     handle_get_module_state,
@@ -27,10 +28,21 @@ from modulr_core.operations.handlers import (
     handle_reverse_resolve_name,
     handle_submit_module_route,
 )
+from modulr_core.operations.handlers_branding import (
+    handle_get_organization_logo,
+    handle_get_user_profile_image,
+    handle_set_organization_logo,
+    handle_set_user_profile_image,
+)
 
 _HANDLERS = {
     "get_protocol_version": handle_get_protocol_version,
     "get_protocol_methods": handle_get_protocol_methods,
+    "get_core_genesis_branding": handle_get_core_genesis_branding,
+    "get_organization_logo": handle_get_organization_logo,
+    "get_user_profile_image": handle_get_user_profile_image,
+    "set_organization_logo": handle_set_organization_logo,
+    "set_user_profile_image": handle_set_user_profile_image,
     "get_module_methods": handle_get_module_methods,
     "get_module_route": handle_get_module_route,
     "get_module_state": handle_get_module_state,

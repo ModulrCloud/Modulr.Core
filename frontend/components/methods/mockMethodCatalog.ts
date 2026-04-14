@@ -29,13 +29,14 @@ export const METHOD_CATEGORY_TABS: readonly {
   {
     id: "protocol",
     label: "Protocol",
-    description: "Wire contract, version, and liveness — every participating stack should align here.",
+    description:
+      "Wire version, discovery, branding (org logo / user profile get & set), routes, registration, liveness, and writes Core persists — signed POST /message.",
   },
   {
     id: "validator",
     label: "Validator",
     description:
-      "Coordination plane plus shared protocol surface every validator must speak; modulr.core implements many of these in MVP.",
+      "Read-heavy coordination: lookups, module catalog, routes, resolution — signed POST /message.",
   },
   {
     id: "provider",
@@ -77,6 +78,131 @@ export const METHOD_CATALOG: MethodDef[] = [
     params: [],
   },
   {
+    id: "get_protocol_methods",
+    title: "get_protocol_methods",
+    summary:
+      "List protocol-level wire methods (version surface, discovery, genesis branding read, liveness, …).",
+    category: "protocol",
+    params: [],
+  },
+  {
+    id: "get_core_genesis_branding",
+    title: "get_core_genesis_branding",
+    summary:
+      "Legacy bundle: root org SVG, operator profile (base64), labels — prefer get_organization_logo / get_user_profile_image.",
+    category: "protocol",
+    coreSurface: true,
+    params: [],
+  },
+  {
+    id: "get_organization_logo",
+    title: "get_organization_logo",
+    summary:
+      "Return an organization brand logo (SVG). Pass exactly one of organization_key or organization_signing_public_key_hex.",
+    category: "protocol",
+    coreSurface: true,
+    params: [
+      {
+        name: "organization_key",
+        label: "Organization key (name)",
+        placeholder: "Single-label or dotted org (e.g. modulr or acme.network)",
+        required: false,
+      },
+      {
+        name: "organization_signing_public_key_hex",
+        label: "Organization Ed25519 public key (hex)",
+        placeholder: "64 hex chars — leave name empty if using this",
+        required: false,
+      },
+    ],
+  },
+  {
+    id: "get_user_profile_image",
+    title: "get_user_profile_image",
+    summary:
+      "Return a user profile image (base64 + MIME). Pass exactly one of user_handle or user_signing_public_key_hex.",
+    category: "protocol",
+    coreSurface: true,
+    params: [
+      {
+        name: "user_handle",
+        label: "User handle",
+        placeholder: "@alice or alice — leave empty if using pubkey",
+        required: false,
+      },
+      {
+        name: "user_signing_public_key_hex",
+        label: "User Ed25519 public key (hex)",
+        placeholder: "64 hex chars",
+        required: false,
+      },
+    ],
+  },
+  {
+    id: "set_organization_logo",
+    title: "set_organization_logo",
+    summary:
+      "Create or replace an org SVG logo. Sender must match organization_signing_public_key_hex or be bootstrap.",
+    category: "protocol",
+    coreSurface: true,
+    params: [
+      {
+        name: "organization_signing_public_key_hex",
+        label: "Organization Ed25519 public key (hex)",
+        placeholder: "64 hex chars",
+        required: true,
+      },
+      {
+        name: "organization_key",
+        label: "Organization key (optional)",
+        placeholder: "Scopes the stored row when set",
+        required: false,
+      },
+      {
+        name: "logo_svg",
+        label: "Logo SVG markup",
+        placeholder: "<svg ...> or empty to clear",
+        required: false,
+        multiline: true,
+      },
+    ],
+  },
+  {
+    id: "set_user_profile_image",
+    title: "set_user_profile_image",
+    summary:
+      "Create or replace a user profile image. Sender must match user_signing_public_key_hex or be bootstrap.",
+    category: "protocol",
+    coreSurface: true,
+    params: [
+      {
+        name: "user_signing_public_key_hex",
+        label: "User Ed25519 public key (hex)",
+        placeholder: "64 hex chars",
+        required: true,
+      },
+      {
+        name: "user_handle",
+        label: "User handle (optional)",
+        placeholder: "Scopes the stored row",
+        required: false,
+      },
+      {
+        name: "profile_image_base64",
+        label: "Profile image (standard base64)",
+        placeholder: "No data: prefix — empty with MIME empty to clear",
+        required: false,
+        multiline: true,
+      },
+      {
+        name: "profile_image_mime",
+        label: "MIME type",
+        placeholder: "e.g. image/png",
+        required: false,
+      },
+    ],
+  },
+  {
     id: "lookup_module",
     title: "lookup_module",
     summary: "Resolve a module name to metadata and availability.",
@@ -106,19 +232,11 @@ export const METHOD_CATALOG: MethodDef[] = [
     ],
   },
   {
-    id: "get_protocol_methods",
-    title: "get_protocol_methods",
-    summary:
-      "List the base protocol-level wire operations every validator and module should implement (version, protocol surface, liveness) so stacks interoperate — not modulr.core-only.",
-    category: "validator",
-    params: [],
-  },
-  {
     id: "submit_module_route",
     title: "submit_module_route",
     summary:
       "Modules push their reachable route to Core (not “IP” by name — route_type stays protocol-agnostic; today values are IP-style until other transports land).",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -173,7 +291,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     title: "remove_module_route",
     summary:
       "Drop one stored dial for a module (same module_id + route_type + route as submit). Registered modules sign with their module key; modulr.core removals require a bootstrap key when dev_mode is off.",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -222,7 +340,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     title: "report_module_state",
     summary:
       "Coarse lifecycle phase plus required dashboard-metrics JSON (schema v1): card-style counts, validator status %, 24 hourly health samples. Heartbeat_update is liveness; this is the rollup snapshot for explorers.",
-    category: "validator",
+    category: "protocol",
     params: [
       {
         name: "module_id",
@@ -373,7 +491,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     title: "publish_module_signature",
     summary:
       "Publish a cryptographic proof that the party registering this module is who they claim to be (e.g. signature over a manifest or release digest) — not “upload source to Core.”",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -408,7 +526,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_module",
     title: "register_module",
     summary: "Publish a module declaration (bootstrap / authorized senders in production).",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -429,7 +547,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_org",
     title: "register_org",
     summary: "Claim an organization key under Core policy.",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -444,7 +562,7 @@ export const METHOD_CATALOG: MethodDef[] = [
     id: "register_name",
     title: "register_name",
     summary: "Reserve a human-facing handle bound to an identity.",
-    category: "validator",
+    category: "protocol",
     coreSurface: true,
     params: [
       {
@@ -518,26 +636,40 @@ function stableAddr(seed: string): string {
 
 /** Wire method names modulr.core advertises — aligned with Core `CORE_OPERATIONS` (sorted for display). */
 const CORE_OPERATION_NAMES = [
+  "get_core_genesis_branding",
   "get_module_methods",
   "get_module_route",
+  "get_module_state",
+  "get_organization_logo",
   "get_protocol_methods",
   "get_protocol_version",
+  "get_user_profile_image",
   "heartbeat_update",
   "lookup_module",
   "register_module",
   "register_name",
   "register_org",
   "remove_module_route",
+  "report_module_state",
   "resolve_name",
   "reverse_resolve_name",
+  "set_organization_logo",
+  "set_user_profile_image",
   "submit_module_route",
 ] as const;
 
-/** Same order as Core `sorted(PROTOCOL_METHOD_OPERATIONS)`. */
+/** Same set as Core `PROTOCOL_METHOD_OPERATIONS` (protocol_surface), sorted. */
 const PROTOCOL_METHOD_NAMES = [
+  "get_core_genesis_branding",
+  "get_module_state",
+  "get_organization_logo",
   "get_protocol_methods",
   "get_protocol_version",
+  "get_user_profile_image",
   "heartbeat_update",
+  "report_module_state",
+  "set_organization_logo",
+  "set_user_profile_image",
 ] as const;
 
 type MockWireMethodRow = {
@@ -556,6 +688,14 @@ function mockCatalogRow(method: string): MockWireMethodRow {
   if (protocolSurface) {
     if (method === "heartbeat_update") group = "liveness";
     else if (method === "get_protocol_version") group = "version";
+    else if (
+      method === "get_core_genesis_branding" ||
+      method === "get_organization_logo" ||
+      method === "get_user_profile_image" ||
+      method === "set_organization_logo" ||
+      method === "set_user_profile_image"
+    )
+      group = "branding";
     else group = "discovery";
   }
   return {
@@ -586,9 +726,7 @@ export function buildMockMethodResponse(
         server_time: now,
       };
     case "get_protocol_methods": {
-      const methods = [...PROTOCOL_METHOD_NAMES]
-        .map((m) => mockCatalogRow(m))
-        .sort((a, b) => a.method.localeCompare(b.method));
+      const methods = [...PROTOCOL_METHOD_NAMES].map((m) => mockCatalogRow(m));
       return {
         status: "ok",
         catalog_schema_version: 1,
@@ -598,6 +736,17 @@ export function buildMockMethodResponse(
         server_time: now,
       };
     }
+    case "get_core_genesis_branding":
+      return {
+        status: "ok",
+        genesis_complete: true,
+        root_organization_label: "mock",
+        bootstrap_operator_display_name: "Mock",
+        root_organization_logo_svg: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        operator_profile_image_base64: null,
+        operator_profile_image_mime: null,
+        server_time: now,
+      };
     case "lookup_module": {
       const name = payload.module_name?.trim() || "unknown";
       return {
@@ -770,6 +919,45 @@ export function buildMockMethodResponse(
         received_at: now,
         peers_seen: 12 + (seed % 40),
         note: payload.note?.trim() || null,
+      };
+    case "get_organization_logo":
+      return {
+        status: "ok",
+        organization_key: payload.organization_key?.trim() || "mock",
+        organization_signing_public_key_hex: "a".repeat(64),
+        logo_svg:
+          '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+          '<rect width="64" height="64" fill="#f60"/></svg>',
+        source: "mock",
+        server_time: now,
+      };
+    case "get_user_profile_image":
+      return {
+        status: "ok",
+        user_handle: "mock",
+        user_signing_public_key_hex: "b".repeat(64),
+        profile_image_base64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        profile_image_mime: "image/png",
+        source: "mock",
+        server_time: now,
+      };
+    case "set_organization_logo":
+      return {
+        status: "ok",
+        organization_key: payload.organization_key?.trim() || null,
+        organization_signing_public_key_hex:
+          payload.organization_signing_public_key_hex?.trim() || "",
+        logo_svg_stored: true,
+        server_time: now,
+      };
+    case "set_user_profile_image":
+      return {
+        status: "ok",
+        user_handle: payload.user_handle?.trim() || null,
+        user_signing_public_key_hex: payload.user_signing_public_key_hex?.trim() || "",
+        profile_image_stored: Boolean(payload.profile_image_base64?.trim()),
+        server_time: now,
       };
     default:
       return { status: "unknown_operation", operation };
