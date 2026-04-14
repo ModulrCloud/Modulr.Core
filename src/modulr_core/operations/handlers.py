@@ -55,6 +55,7 @@ from modulr_core.validation.names import (
     validate_resolved_id,
 )
 from modulr_core.version import MODULE_VERSION
+
 _MAX_METRICS_CANONICAL_BYTES = 65_536
 _MODULE_STATE_PHASES: frozenset[str] = frozenset(
     ("running", "syncing", "degraded", "maintenance"),
@@ -514,7 +515,7 @@ def _sync_legacy_route_to_primary_dial(
 
 
 def _parse_wire_module_name(p: dict[str, Any], *, field: str = "module_name") -> str:
-    """Strip, validate apex name (at most one dot), return lowercase canonical module id."""
+    """Strip, validate apex name (≤1 dot), return lowercase canonical module id."""
     raw = require_str(p, field).strip()
     if not raw:
         raise WireValidationError(

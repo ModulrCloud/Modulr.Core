@@ -19,6 +19,8 @@ from modulr_core.validation import (
         "user@api.example.com",
         "modulr.network",
         "api.example.com",
+        "modulr",
+        "acme",
     ],
 )
 def test_validate_modulr_resolve_name_accepts(raw: str) -> None:
@@ -30,11 +32,9 @@ def test_validate_modulr_resolve_name_accepts(raw: str) -> None:
     [
         "",
         "   ",
-        "modulr",
         "user@localhost",
         "@@bad",
         "@",
-        "no-at-sign",
     ],
 )
 def test_validate_modulr_resolve_name_rejects(raw: str) -> None:
