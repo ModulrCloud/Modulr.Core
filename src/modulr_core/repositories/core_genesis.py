@@ -50,7 +50,7 @@ def _validate_bootstrap_pubkey_hex(pub_hex: str) -> None:
 
 
 def _validate_apex_domain(domain: str) -> str:
-    """Enforce dotted DNS-style apex (``validate_modulr_org_domain``), max 253 chars."""
+    """Enforce Core apex name (``validate_modulr_org_domain``), max 253 chars."""
     d = domain.strip()
     if not d:
         raise ValueError("modulr_apex_domain must be non-empty when set")
@@ -61,8 +61,8 @@ def _validate_apex_domain(domain: str) -> str:
         return validate_modulr_org_domain(d)
     except WireValidationError as e:
         raise ValueError(
-            "modulr_apex_domain must be a dotted DNS-style domain "
-            "(same label rules as register_org; e.g. modulr.network)",
+            "modulr_apex_domain must be a Core apex name "
+            "(same rules as register_org; e.g. modulr.network or modulr)",
         ) from e
 
 
