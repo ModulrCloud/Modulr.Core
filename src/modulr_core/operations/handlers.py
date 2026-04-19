@@ -1428,7 +1428,8 @@ def handle_register_org(
     name = validate_modulr_org_domain(require_str(p, "organization_name"))
     resolved_id = validate_resolved_id(require_str(p, "resolved_id"))
     route = optional_dict(p, "route")
-    metadata = optional_json_value(p, "metadata")
+    metadata_in_payload = "metadata" in p
+    metadata = optional_json_value(p, "metadata") if metadata_in_payload else None
     if metadata is not None and not isinstance(metadata, dict):
         raise WireValidationError(
             "payload.metadata must be a JSON object or null",
@@ -1470,11 +1471,17 @@ def handle_register_org(
         elif wants_module and existing_org["resolved_id"] == resolved_id:
             # Org exists (e.g. route/metadata from an earlier register_org without a module
             # row); allow upgrading to module publisher by refreshing the binding row.
+            # If ``metadata`` was omitted, keep stored org metadata (omit must not clear it).
+            effective_meta_json = (
+                meta_json
+                if metadata_in_payload
+                else _norm_json_text_cell(existing_org.get("metadata_json"))
+            )
             repo.update_route_metadata(
                 name=name,
                 resolved_id=resolved_id,
                 route_json=route_json,
-                metadata_json=meta_json,
+                metadata_json=effective_meta_json,
             )
             created_at = existing_org["created_at"]
             is_new = False

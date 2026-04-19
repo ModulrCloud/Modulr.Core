@@ -2490,6 +2490,8 @@ def test_register_org_module_publish_after_plain_org_binding() -> None:
     row = NameBindingsRepository(conn).get_by_name(org_name)
     assert row is not None
     assert row["route_json"] is not None
+    assert row["metadata_json"] is not None
+    assert json.loads(row["metadata_json"]) == {"note": "pre-module"}
 
 
 def test_reverse_resolve_identity_not_found() -> None:
