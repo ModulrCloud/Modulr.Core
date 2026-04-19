@@ -88,14 +88,6 @@ function renderFields() {
   const el = document.getElementById("fields");
   const mv = protocolVersion;
   const templates = {
-    register_module: `
-      ${opIntro("<strong>Required:</strong> module name, version, route JSON, and signing key (or use derived key).")}
-      ${fieldHtml("f_module_name", "module_name", "modulr.playground", "e.g. modulr.storage")}
-      ${fieldHtml("f_module_version", "module_version", mv, "protocol / module version string")}
-      ${fieldTextarea("f_route", "route (JSON object)", '{"base_url":"https://example.invalid"}', '{"base_url":"..."}')}
-      <label class="checkbox-label"><input type="checkbox" id="f_use_derived_signing" checked /> Use signing_public_key derived from private key (above)</label>
-      ${fieldHtml("f_signing_pk", "signing_public_key (hex, 32 bytes)", "", "only if checkbox is off")}
-    `,
     lookup_module: `
       ${opIntro("<strong>Required:</strong> registered module name to look up.")}
       ${fieldHtml("f_lookup_module", "module_name", "modulr.playground", "dotted module name")}
@@ -108,11 +100,15 @@ function renderFields() {
       ${fieldTextarea("f_rn_meta", "metadata (JSON, optional)", "", "{}")}
     `,
     register_org: `
-      ${opIntro("<strong>Required:</strong> <code>organization_name</code> — dotted domain only (no @), e.g. <code>acme.network</code>. Same <code>resolved_id</code> as users under that org if you want them linked.")}
-      ${fieldHtml("f_org_name", "organization_name", "modulr.network", "dotted domain, not user@domain")}
+      ${opIntro("<strong>Required:</strong> <code>organization_name</code> (apex) and <code>resolved_id</code>. Optional org route/metadata. To also register the <strong>modules</strong> row (same as legacy register_module): provide route as a JSON object and signing_public_key (or use derived key).")}
+      ${fieldHtml("f_org_name", "organization_name", "modulr.network", "apex label or label.label")}
       ${fieldHtml("f_org_resolved", "resolved_id", "org:1", "e.g. org:…")}
-      ${fieldTextarea("f_ro_route", "route (JSON, optional)", "", "{}")}
+      ${fieldTextarea("f_ro_route", "route (JSON, optional)", '{"base_url":"https://example.invalid"}', "required JSON object if publishing module surface")}
       ${fieldTextarea("f_ro_meta", "metadata (JSON, optional)", "", "{}")}
+      ${fieldHtml("f_ro_module_version", "module_version (optional)", mv, "when publishing module surface; default 1.0.0")}
+      <label class="checkbox-label"><input type="checkbox" id="f_ro_publish_module" /> Also publish module row (needs route + signing_public_key)</label>
+      <label class="checkbox-label"><input type="checkbox" id="f_ro_use_derived_signing" checked /> Use signing_public_key derived from private key (above)</label>
+      ${fieldHtml("f_ro_signing_pk", "signing_public_key (hex, optional)", "", "when publishing module and not using derived")}
     `,
     resolve_name: `
       ${opIntro("<strong>Required:</strong> name to resolve (must match a registered binding).")}
@@ -147,26 +143,6 @@ function parseJsonOrEmpty(text, optional) {
 async function buildPayload(op) {
   const mv = protocolVersion;
   switch (op) {
-    case "register_module": {
-      const { getPublicKeyAsync } = await loadNoble();
-      const route = parseJsonOrEmpty(
-        document.getElementById("f_route").value,
-        false,
-      );
-      let signing = document.getElementById("f_signing_pk").value.trim();
-      if (document.getElementById("f_use_derived_signing").checked) {
-        const priv = hexToBytes(document.getElementById("privHex").value);
-        signing = bytesToHex(await getPublicKeyAsync(priv));
-      } else if (!signing) {
-        throw new Error("signing_public_key required when not using derived key");
-      }
-      return {
-        module_name: document.getElementById("f_module_name").value.trim(),
-        module_version: document.getElementById("f_module_version").value.trim(),
-        route,
-        signing_public_key: signing,
-      };
-    }
     case "lookup_module":
       return {
         module_name: document.getElementById("f_lookup_module").value.trim(),
@@ -185,6 +161,7 @@ async function buildPayload(op) {
       return p;
     }
     case "register_org": {
+      const { getPublicKeyAsync } = await loadNoble();
       const routeEl = document.getElementById("f_ro_route");
       const metaEl = document.getElementById("f_ro_meta");
       const p = {
@@ -195,6 +172,20 @@ async function buildPayload(op) {
         p.route = parseJsonOrEmpty(routeEl.value, false);
       if (metaEl.value.trim())
         p.metadata = parseJsonOrEmpty(metaEl.value, false);
+      const mv = document.getElementById("f_ro_module_version").value.trim();
+      if (mv) p.module_version = mv;
+      if (document.getElementById("f_ro_publish_module").checked) {
+        let signing = document.getElementById("f_ro_signing_pk").value.trim();
+        if (document.getElementById("f_ro_use_derived_signing").checked) {
+          const priv = hexToBytes(document.getElementById("privHex").value);
+          signing = bytesToHex(await getPublicKeyAsync(priv));
+        } else if (!signing) {
+          throw new Error(
+            "signing_public_key required when publishing module and not using derived key",
+          );
+        }
+        p.signing_public_key = signing;
+      }
       return p;
     }
     case "resolve_name":

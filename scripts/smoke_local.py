@@ -153,7 +153,8 @@ def main() -> None:
     now = time.time()
 
     reg_payload: dict[str, Any] = {
-        "module_name": module_name,
+        "organization_name": module_name,
+        "resolved_id": "user:smoke-binding",
         "module_version": MODULE_VERSION,
         "route": {"base_url": "https://smoke.local.example"},
         "signing_public_key": pub.hex(),
@@ -162,7 +163,7 @@ def main() -> None:
     reg_body = _sign_envelope(
         private_key=pk,
         message_id=reg_mid,
-        operation="register_module",
+        operation="register_org",
         payload=reg_payload,
         now=now,
         expiry_window_s=args.expiry_window,
@@ -171,7 +172,7 @@ def main() -> None:
     with httpx.Client(timeout=args.timeout) as client:
         try:
             print(
-                f"POST {url}  register_module  {module_name!r}  message_id={reg_mid}",
+                f"POST {url}  register_org  {module_name!r}  message_id={reg_mid}",
             )
             r1 = _post_json(client, url, reg_body)
             out1 = _expect_success(r1, step="register (first)")

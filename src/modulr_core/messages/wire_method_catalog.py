@@ -123,6 +123,20 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         protocol_surface=True,
     ),
     _e(
+        "get_user_description",
+        category="protocol",
+        group="branding",
+        summary="Return the public user description (bio) by handle or user pubkey.",
+        description=(
+            "Provide exactly one of user_handle or user_signing_public_key_hex. "
+            "Reads the centralized description stored by set_user_description on "
+            "Core (not genesis metadata). Returns null description if the profile "
+            "row exists but no bio was set."
+        ),
+        payload_contract="user_profile_image_get",
+        protocol_surface=True,
+    ),
+    _e(
         "set_organization_logo",
         category="protocol",
         group="branding",
@@ -147,6 +161,20 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
             "profile_image_mime together or both null. Optional user_handle. Sender "
             "must match the user key or be bootstrap. Updates genesis operator image "
             "when the key is the bootstrap operator."
+        ),
+        payload_contract="user_profile_image_set",
+        protocol_surface=True,
+    ),
+    _e(
+        "set_user_description",
+        category="protocol",
+        group="branding",
+        summary="Create or replace the public user description (bio) for a user pubkey.",
+        description=(
+            "Requires user_signing_public_key_hex; description is a trimmed string "
+            "or null to clear (max length enforced on Core). Optional user_handle "
+            "to mirror the row under h:<handle> as well as p:<pubkey>. Sender must "
+            "match the user key or be bootstrap—same as set_user_profile_image."
         ),
         payload_contract="user_profile_image_set",
         protocol_surface=True,
@@ -201,17 +229,6 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         payload_contract="module_id",
     ),
     _e(
-        "register_module",
-        category="validator",
-        group="registration",
-        summary="Register a new module identity, signing key, and route hints.",
-        description=(
-            "Bootstrap-gated in production. Establishes the module_name and keys "
-            "Core will honor for subsequent signed operations from that module."
-        ),
-        payload_contract="register_module",
-    ),
-    _e(
         "lookup_module",
         category="validator",
         group="discovery",
@@ -237,10 +254,14 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
         "register_org",
         category="validator",
         group="naming",
-        summary="Register an organization key for later resolution and policy.",
+        summary="Register an organization apex and optional module surface on Core.",
         description=(
-            "Claims an organization identifier subject to bootstrap and network "
-            "rules. Pairs with resolve_name and reverse_resolve_name for discovery."
+            "Bootstrap-gated. Always writes the apex to the name registry "
+            "(organization_name, resolved_id, optional route/metadata). When "
+            "signing_public_key is set, also registers the modules row for the same "
+            "apex (requires route as a JSON object; optional module_version defaults "
+            "to 1.0.0; module_capabilities / module_metadata for the module record). "
+            "Pairs with resolve_name, reverse_resolve_name, and lookup_module."
         ),
         payload_contract="register_org",
     ),

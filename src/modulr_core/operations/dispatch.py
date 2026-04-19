@@ -19,7 +19,6 @@ from modulr_core.operations.handlers import (
     handle_get_protocol_version,
     handle_heartbeat_update,
     handle_lookup_module,
-    handle_register_module,
     handle_register_name,
     handle_register_org,
     handle_remove_module_route,
@@ -30,8 +29,10 @@ from modulr_core.operations.handlers import (
 )
 from modulr_core.operations.handlers_branding import (
     handle_get_organization_logo,
+    handle_get_user_description,
     handle_get_user_profile_image,
     handle_set_organization_logo,
+    handle_set_user_description,
     handle_set_user_profile_image,
 )
 
@@ -41,14 +42,15 @@ _HANDLERS = {
     "get_core_genesis_branding": handle_get_core_genesis_branding,
     "get_organization_logo": handle_get_organization_logo,
     "get_user_profile_image": handle_get_user_profile_image,
+    "get_user_description": handle_get_user_description,
     "set_organization_logo": handle_set_organization_logo,
     "set_user_profile_image": handle_set_user_profile_image,
+    "set_user_description": handle_set_user_description,
     "get_module_methods": handle_get_module_methods,
     "get_module_route": handle_get_module_route,
     "get_module_state": handle_get_module_state,
     "remove_module_route": handle_remove_module_route,
     "submit_module_route": handle_submit_module_route,
-    "register_module": handle_register_module,
     "lookup_module": handle_lookup_module,
     "register_name": handle_register_name,
     "register_org": handle_register_org,

@@ -10,7 +10,7 @@ Supported forms (MVP):
 - **``domain.subdomain``** — organization / zone style with no ``@``. May be a multi-label
   path for lookups, or a **single apex label** (``acme``) matching ``register_org``.
 
-**Core registry (``register_org``, ``register_module``):** apex names only — **at most
+**Core registry (``register_org``):** apex names only — **at most
 one** dot (single label ``acme`` or two labels ``acme.network``). Deeper paths such as
 ``labs.acme.network`` are **not** registered on Core; they are delegated to the parent
 apex (same idea as DNS).
@@ -38,7 +38,7 @@ _SCOPED_RE = re.compile(
 )
 
 _ORG_DOMAIN_RE = re.compile(rf"^{_DOMAIN_DOT}$")
-# register_org / register_module: at most one dot (one or two labels only).
+# register_org (and module row when signing_public_key is set): at most one dot.
 _APEX_TWO_LABELS = re.compile(rf"^{_LABEL}\.{_LABEL}$")
 
 

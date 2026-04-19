@@ -22,10 +22,7 @@ from modulr_core.messages.wire_method_catalog import (
     build_core_module_methods_payload,
     build_protocol_methods_payload,
 )
-from modulr_core.operations.authorize import (
-    require_bootstrap_sender,
-    require_bootstrap_to_register_module,
-)
+from modulr_core.operations.authorize import require_bootstrap_sender
 from modulr_core.operations.module_names import (
     BUILTIN_CORE_SIGNING_PUBLIC_KEY_HEX,
     CANONICAL_CORE_MODULE_NAME,
@@ -36,7 +33,7 @@ from modulr_core.operations.payload_util import (
     optional_ed25519_public_key_hex,
     optional_int,
     optional_json_value,
-    require_dict,
+    optional_str,
     require_str,
 )
 from modulr_core.repositories.core_advertised_route import CoreAdvertisedRouteRepository
@@ -64,14 +61,16 @@ _MAX_MODULE_STATE_DETAIL_CHARS = 16_384
 
 _MODULE_STATE_DETAIL_SCHEMA_VERSION = 2
 _MODULE_STATE_DETAIL_AUX_LABEL_MAX_LEN = 40
-_HEALTH_ACTIVITY_24H_ALLOWED_KEYS: frozenset[str] = frozenset({
-    "granularity_hours",
-    "jobs_points",
-    "aux1_label",
-    "aux1_points",
-    "aux2_label",
-    "aux2_points",
-})
+_HEALTH_ACTIVITY_24H_ALLOWED_KEYS: frozenset[str] = frozenset(
+    {
+        "granularity_hours",
+        "jobs_points",
+        "aux1_label",
+        "aux1_points",
+        "aux2_label",
+        "aux2_points",
+    }
+)
 _MODULE_STATE_DETAIL_METRIC_KEYS: tuple[str, ...] = (
     "total_users",
     "active_users",
@@ -162,15 +161,13 @@ def _validate_module_state_dashboard_cards(root: dict[str, Any]) -> None:
         desc = item.get("description")
         if not isinstance(desc, str) or not desc.strip():
             raise WireValidationError(
-                f"payload.detail.dashboard_cards[{i}].description must be a "
-                "non-empty string",
+                f"payload.detail.dashboard_cards[{i}].description must be a non-empty string",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
         if len(desc) > _MAX_DASHBOARD_CARD_DESCRIPTION_CHARS:
             mx = _MAX_DASHBOARD_CARD_DESCRIPTION_CHARS
             raise WireValidationError(
-                f"payload.detail.dashboard_cards[{i}].description must be at "
-                f"most {mx} characters",
+                f"payload.detail.dashboard_cards[{i}].description must be at most {mx} characters",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
 
@@ -184,8 +181,7 @@ def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
         )
     if len(dp) > _MAX_DASHBOARD_PIES:
         raise WireValidationError(
-            f"payload.detail.dashboard_pies must have at most {_MAX_DASHBOARD_PIES} "
-            "entries",
+            f"payload.detail.dashboard_pies must have at most {_MAX_DASHBOARD_PIES} entries",
             code=ErrorCode.PAYLOAD_INVALID,
         )
     for i, pie in enumerate(dp):
@@ -197,8 +193,7 @@ def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
         mn = pie.get("metric_name")
         if not isinstance(mn, str) or not mn.strip():
             raise WireValidationError(
-                f"payload.detail.dashboard_pies[{i}].metric_name must be a "
-                "non-empty string",
+                f"payload.detail.dashboard_pies[{i}].metric_name must be a non-empty string",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
         pbase = f"payload.detail.dashboard_pies[{i}]"
@@ -225,8 +220,7 @@ def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
         ns = len(slices)
         if ns < 1 or ns > _MAX_PIE_SLICES:
             raise WireValidationError(
-                f"{pbase}.slices must have length between 1 and "
-                f"{_MAX_PIE_SLICES} inclusive",
+                f"{pbase}.slices must have length between 1 and {_MAX_PIE_SLICES} inclusive",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
         total_pct = 0
@@ -246,8 +240,7 @@ def _validate_module_state_dashboard_pies(root: dict[str, Any]) -> None:
             total_pct += pj
         if total_pct != 100:
             raise WireValidationError(
-                f"{pbase}.slices percent values must sum to 100 "
-                f"(got {total_pct})",
+                f"{pbase}.slices percent values must sum to 100 (got {total_pct})",
                 code=ErrorCode.PAYLOAD_INVALID,
             )
 
@@ -383,8 +376,7 @@ def _normalize_module_state_detail_json(detail_raw: str) -> tuple[str, list[str]
     unknown_ha_keys = sorted(set(ha.keys()) - _HEALTH_ACTIVITY_24H_ALLOWED_KEYS)
     for uk in unknown_ha_keys:
         ha_warnings.append(
-            "Removed unsupported payload.detail.health_activity_24h "
-            f"field {uk!r}",
+            f"Removed unsupported payload.detail.health_activity_24h field {uk!r}",
         )
     ha_clean = {k: ha[k] for k in ha if k in _HEALTH_ACTIVITY_24H_ALLOWED_KEYS}
     hbase = "payload.detail.health_activity_24h"
@@ -497,10 +489,12 @@ def _sync_legacy_route_to_primary_dial(
             )
         return
     first = rows[0]
-    route_json = canonical_json_str({
-        "route_type": first["route_type"],
-        "route": first["route"],
-    })
+    route_json = canonical_json_str(
+        {
+            "route_type": first["route_type"],
+            "route": first["route"],
+        }
+    )
     if is_core:
         CoreAdvertisedRouteRepository(conn).upsert(
             route_json=route_json,
@@ -764,10 +758,7 @@ def handle_get_module_methods(
             request_message_id=env["message_id"],
             operation_response="get_module_methods_response",
             success_code=SuccessCode.MODULE_METHODS_RETURNED,
-            detail=(
-                "Full wire catalog for modulr.core "
-                "(coordination + protocol surface)."
-            ),
+            detail=("Full wire catalog for modulr.core (coordination + protocol surface)."),
             payload=build_core_module_methods_payload(module_id=module_id),
             clock=clock,
         )
@@ -1097,97 +1088,6 @@ def handle_remove_module_route(
     )
 
 
-def handle_register_module(
-    validated: ValidatedInbound,
-    *,
-    settings: Settings,
-    conn: sqlite3.Connection,
-    clock: EpochClock,
-) -> dict[str, Any]:
-    env = validated.envelope
-    require_bootstrap_to_register_module(
-        settings=settings,
-        conn=conn,
-        sender_public_key_hex=env["sender_public_key"],
-    )
-    p: dict[str, Any] = env["payload"]
-    module_name = _parse_wire_module_name(p)
-    if module_name == CANONICAL_CORE_MODULE_NAME:
-        raise WireValidationError(
-            f"{CANONICAL_CORE_MODULE_NAME!r} is reserved and cannot be registered",
-            code=ErrorCode.MODULE_NAME_RESERVED,
-        )
-    module_version = require_str(p, "module_version")
-    route = require_dict(p, "route")
-    try:
-        route_json = canonical_json_str(route)
-    except (TypeError, ValueError) as e:
-        raise WireValidationError(
-            f"payload.route is not JSON-serializable: {e}",
-            code=ErrorCode.INVALID_ROUTE,
-        ) from e
-
-    cap_raw = optional_json_value(p, "capabilities")
-    meta_raw = optional_json_value(p, "metadata")
-    cap_json = canonical_json_str(cap_raw) if cap_raw is not None else None
-    meta_json = canonical_json_str(meta_raw) if meta_raw is not None else None
-
-    key_hex = require_str(p, "signing_public_key")
-    try:
-        key_bytes = decode_hex_fixed(key_hex, byte_length=32)
-        Ed25519PublicKey.from_public_bytes(key_bytes)
-    except InvalidHexEncoding as e:
-        raise WireValidationError(str(e), code=ErrorCode.PUBLIC_KEY_INVALID) from e
-    except ValueError as e:
-        raise WireValidationError(
-            str(e),
-            code=ErrorCode.PUBLIC_KEY_INVALID,
-        ) from e
-
-    now = int(clock())
-    repo = ModulesRepository(conn)
-    try:
-        repo.insert(
-            module_name=module_name,
-            module_version=module_version,
-            route_json=route_json,
-            capabilities_json=cap_json,
-            metadata_json=meta_json,
-            signing_public_key=key_bytes,
-            registered_by_sender_id=env["sender_id"],
-            registered_at=now,
-        )
-    except sqlite3.IntegrityError:
-        existing = repo.get_by_name(module_name)
-        if existing is None:
-            raise
-        if _module_row_matches_request(
-            existing,
-            module_version=module_version,
-            route_json=route_json,
-            capabilities_json=cap_json,
-            metadata_json=meta_json,
-            signing_public_key=key_bytes,
-            registered_by_sender_id=env["sender_id"],
-        ):
-            pass  # idempotent replay
-        else:
-            raise WireValidationError(
-                "module_name is already registered with different data",
-                code=ErrorCode.MODULE_ALREADY_REGISTERED,
-            ) from None
-
-    out_payload: dict[str, Any] = {"module_name": module_name}
-    return success_response_envelope(
-        request_message_id=env["message_id"],
-        operation_response="register_module_response",
-        success_code=SuccessCode.MODULE_REGISTERED,
-        detail="Module registered.",
-        payload=out_payload,
-        clock=clock,
-    )
-
-
 def _module_row_matches_request(
     row: dict[str, Any],
     *,
@@ -1209,6 +1109,52 @@ def _module_row_matches_request(
         and sk == signing_public_key
         and row["registered_by_sender_id"] == registered_by_sender_id
     )
+
+
+def _upsert_module_row_for_org(
+    *,
+    env: dict[str, Any],
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+    module_name: str,
+    module_version: str,
+    route_json: str,
+    capabilities_json: str | None,
+    metadata_json: str | None,
+    signing_public_key: bytes,
+) -> None:
+    """Insert or idempotent-update a ``modules`` row (former ``register_module`` body)."""
+    now = int(clock())
+    repo = ModulesRepository(conn)
+    try:
+        repo.insert(
+            module_name=module_name,
+            module_version=module_version,
+            route_json=route_json,
+            capabilities_json=capabilities_json,
+            metadata_json=metadata_json,
+            signing_public_key=signing_public_key,
+            registered_by_sender_id=env["sender_id"],
+            registered_at=now,
+        )
+    except sqlite3.IntegrityError:
+        existing = repo.get_by_name(module_name)
+        if existing is None:
+            raise
+        if _module_row_matches_request(
+            existing,
+            module_version=module_version,
+            route_json=route_json,
+            capabilities_json=capabilities_json,
+            metadata_json=metadata_json,
+            signing_public_key=signing_public_key,
+            registered_by_sender_id=env["sender_id"],
+        ):
+            return
+        raise WireValidationError(
+            "module_name is already registered with different data",
+            code=ErrorCode.MODULE_ALREADY_REGISTERED,
+        ) from None
 
 
 def handle_lookup_module(
@@ -1270,12 +1216,8 @@ def _module_row_to_lookup_payload(
         "module_version": row["module_version"],
         "route": route,
         "routes": routes_wire,
-        "capabilities": json.loads(row["capabilities_json"])
-        if row["capabilities_json"]
-        else None,
-        "metadata": json.loads(row["metadata_json"])
-        if row["metadata_json"]
-        else None,
+        "capabilities": json.loads(row["capabilities_json"]) if row["capabilities_json"] else None,
+        "metadata": json.loads(row["metadata_json"]) if row["metadata_json"] else None,
         "signing_public_key": sk.hex(),
         "registered_by_sender_id": row["registered_by_sender_id"],
         "registered_at": row["registered_at"],
@@ -1326,7 +1268,7 @@ def _insert_name_binding_idempotent(
     now: int,
     conflict_message: str,
 ) -> tuple[int, bool]:
-    """Insert a name binding; handle races like :func:`handle_register_module`.
+    """Insert a name binding; handle races like :func:`handle_register_org`.
 
     Returns ``(created_at, is_new_insert)``. On duplicate key with mismatched data,
     raises ``NAME_ALREADY_BOUND`` with ``conflict_message``.
@@ -1455,11 +1397,7 @@ def handle_register_name(
         request_message_id=env["message_id"],
         operation_response="register_name_response",
         success_code=SuccessCode.NAME_REGISTERED,
-        detail=(
-            "Name registered."
-            if is_new
-            else "Name already registered (idempotent)."
-        ),
+        detail=("Name registered." if is_new else "Name already registered (idempotent)."),
         payload=out_payload,
         clock=clock,
     )
@@ -1472,6 +1410,14 @@ def handle_register_org(
     conn: sqlite3.Connection,
     clock: EpochClock,
 ) -> dict[str, Any]:
+    """Register an apex organization in ``name_bindings`` and optionally the ``modules`` row.
+
+    When ``signing_public_key`` is set, also publishes module surface (same data the former
+    ``register_module`` operation accepted): requires ``route`` as a JSON object, optional
+    ``module_version`` (defaults to ``1.0.0``), ``module_capabilities`` / ``capabilities``,
+    and ``module_metadata`` for the modules table (org-level ``metadata`` is only for
+    ``name_bindings``).
+    """
     env = validated.envelope
     require_bootstrap_sender(
         settings=settings,
@@ -1494,6 +1440,21 @@ def handle_register_org(
     except (TypeError, ValueError) as e:
         raise WireValidationError(str(e), code=ErrorCode.PAYLOAD_INVALID) from e
 
+    signing_raw = optional_str(p, "signing_public_key")
+    wants_module = signing_raw is not None
+    if wants_module:
+        signing_key_hex = signing_raw.strip()
+        if not signing_key_hex:
+            raise WireValidationError(
+                "payload.signing_public_key must be non-empty when set",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        if route is None:
+            raise WireValidationError(
+                "payload.route must be a JSON object when signing_public_key is set",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+
     repo = NameBindingsRepository(conn)
     now = int(clock())
     created_at, is_new = _insert_name_binding_idempotent(
@@ -1505,10 +1466,59 @@ def handle_register_org(
         now=now,
         conflict_message="organization_name is already bound to different data",
     )
+
+    module_registered = False
+    if wants_module:
+        assert route_json is not None
+        module_key = normalize_module_name(name)
+        if module_key == CANONICAL_CORE_MODULE_NAME:
+            raise WireValidationError(
+                f"{CANONICAL_CORE_MODULE_NAME!r} is reserved and cannot be registered",
+                code=ErrorCode.MODULE_NAME_RESERVED,
+            )
+        mv = optional_str(p, "module_version")
+        module_version = (mv.strip() if mv else "") or "1.0.0"
+        cap_raw = optional_json_value(p, "module_capabilities")
+        if cap_raw is None:
+            cap_raw = optional_json_value(p, "capabilities")
+        mod_meta_raw = optional_json_value(p, "module_metadata")
+        if mod_meta_raw is not None and not isinstance(mod_meta_raw, dict):
+            raise WireValidationError(
+                "payload.module_metadata must be a JSON object or null",
+                code=ErrorCode.PAYLOAD_INVALID,
+            )
+        try:
+            cap_json = canonical_json_str(cap_raw) if cap_raw is not None else None
+            mod_meta_json = canonical_json_str(mod_meta_raw) if mod_meta_raw is not None else None
+        except (TypeError, ValueError) as e:
+            raise WireValidationError(str(e), code=ErrorCode.PAYLOAD_INVALID) from e
+        try:
+            key_bytes = decode_hex_fixed(signing_key_hex, byte_length=32)
+            Ed25519PublicKey.from_public_bytes(key_bytes)
+        except InvalidHexEncoding as e:
+            raise WireValidationError(str(e), code=ErrorCode.PUBLIC_KEY_INVALID) from e
+        except ValueError as e:
+            raise WireValidationError(
+                str(e),
+                code=ErrorCode.PUBLIC_KEY_INVALID,
+            ) from e
+        _upsert_module_row_for_org(
+            env=env,
+            conn=conn,
+            clock=clock,
+            module_name=module_key,
+            module_version=module_version,
+            route_json=route_json,
+            capabilities_json=cap_json,
+            metadata_json=mod_meta_json,
+            signing_public_key=key_bytes,
+        )
+        module_registered = True
     org_payload: dict[str, Any] = {
         "organization_name": name,
         "resolved_id": resolved_id,
         "created_at": created_at,
+        "module_registered": module_registered,
     }
     return success_response_envelope(
         request_message_id=env["message_id"],

@@ -118,6 +118,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 aria-label="Core tools"
               >
                 <Link
+                  href="/profile"
+                  aria-current={pathname === "/profile" ? "page" : undefined}
+                  className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
+                    pathname === "/profile" ? "text-[var(--modulr-accent)]" : ""
+                  }`}
+                >
+                  Profile
+                </Link>
+                <Link
                   href="/registration"
                   aria-current={pathname === "/registration" ? "page" : undefined}
                   className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
@@ -145,15 +154,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   }`}
                 >
                   Methods
-                </Link>
-                <Link
-                  href="/profile"
-                  aria-current={pathname === "/profile" ? "page" : undefined}
-                  className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
-                    pathname === "/profile" ? "text-[var(--modulr-accent)]" : ""
-                  }`}
-                >
-                  Profile
                 </Link>
               </nav>
             </div>

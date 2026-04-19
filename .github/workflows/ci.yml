@@ -31,3 +31,7 @@ jobs:
       - name: Frontend install and build
         working-directory: frontend
         run: npm ci && npm run build
+
+      - name: Viewer (Vite) install and build
+        working-directory: viewer
+        run: npm ci && npm run build

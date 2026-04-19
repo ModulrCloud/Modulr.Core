@@ -34,15 +34,3 @@ def require_bootstrap_sender(
         )
 
 
-def require_bootstrap_to_register_module(
-    *,
-    settings: Settings,
-    conn: sqlite3.Connection,
-    sender_public_key_hex: str,
-) -> None:
-    """Only bootstrap keys may ``register_module`` when a list is configured."""
-    require_bootstrap_sender(
-        settings=settings,
-        conn=conn,
-        sender_public_key_hex=sender_public_key_hex,
-    )
