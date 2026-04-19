@@ -61,8 +61,20 @@ export function isProfileImageMimeAllowedForCore(mime: string): boolean {
 /** Max persisted length for `profileAvatarDataUrl` (~512 KB string budget). */
 const PROFILE_AVATAR_DATA_URL_MAX_CHARS = 520_000;
 
+/** Local Core default: TLS (start Core with `--ssl-keyfile` / `--ssl-certfile`; see root README). */
+export const DEFAULT_CORE_ENDPOINT = "https://127.0.0.1:8000";
+
+/** Former default; migrated in `normalizeSettings` so existing localStorage picks up HTTPS. */
+const LEGACY_HTTP_CORE_ENDPOINT = "http://127.0.0.1:8000";
+
+function migrateCoreEndpoints(endpoints: string[]): string[] {
+  return endpoints.map((url) =>
+    url.trim() === LEGACY_HTTP_CORE_ENDPOINT ? DEFAULT_CORE_ENDPOINT : url,
+  );
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
-  coreEndpoints: ["http://127.0.0.1:8000"],
+  coreEndpoints: [DEFAULT_CORE_ENDPOINT],
   colorMode: "dark",
   backgroundEnabled: true,
   backgroundPreset: "fireflies",
@@ -74,9 +86,12 @@ export function normalizeSettings(raw: unknown): AppSettings {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_SETTINGS };
   const o = raw as Record<string, unknown>;
   const endpoints = o.coreEndpoints;
-  const coreEndpoints = Array.isArray(endpoints)
+  let coreEndpoints = Array.isArray(endpoints)
     ? endpoints.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
     : [...DEFAULT_SETTINGS.coreEndpoints];
+  coreEndpoints = migrateCoreEndpoints(
+    coreEndpoints.length ? coreEndpoints : [...DEFAULT_SETTINGS.coreEndpoints],
+  );
 
   let colorMode: ColorMode = DEFAULT_SETTINGS.colorMode;
   if (o.colorMode === "dark" || o.colorMode === "light") {
@@ -125,7 +140,7 @@ export function normalizeSettings(raw: unknown): AppSettings {
   }
 
   return {
-    coreEndpoints: coreEndpoints.length ? coreEndpoints : [...DEFAULT_SETTINGS.coreEndpoints],
+    coreEndpoints,
     colorMode,
     backgroundEnabled,
     backgroundPreset,
@@ -139,7 +154,17 @@ export function loadSettings(): AppSettings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    return normalizeSettings(JSON.parse(raw));
+    const parsed: unknown = JSON.parse(raw);
+    const next = normalizeSettings(parsed);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      JSON.stringify((parsed as { coreEndpoints?: unknown }).coreEndpoints) !==
+        JSON.stringify(next.coreEndpoints)
+    ) {
+      saveSettings(next);
+    }
+    return next;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

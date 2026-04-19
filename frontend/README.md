@@ -2,7 +2,7 @@
 
 Next.js shell: glass layout, **`#ffb700`** accent, dark default background **`#10131A`**, animated background presets (fireflies), **dark/light switch** (dark first), and settings (Core URLs). Optional logo: add **`public/modulr-logo.svg`** (see `public/branding/README.md`). Full roadmap: `plan/customer_web_interface.md`.
 
-With Core running (e.g. `modulr-core --config dev.toml` on port **8000**), the header loads **`GET /version`** for the live `v…` label. **Methods** wires **`get_protocol_version`**, **`get_protocol_methods`**, **`lookup_module`**, **`get_module_methods`**, route helpers, and related ops to the real **`POST /message`** path (canonical JSON + Ed25519, same rules as the dev playground). Core **`dev_mode`** enables CORS for **`http://` and `https://`** on **`localhost:3000`** and **`127.0.0.1:3000`**. If you use Next’s **Network** URL (LAN IP, e.g. `10.0.0.53:3000`), set **`MODULR_CORE_CORS_EXTRA_ORIGINS`** to that origin (see root **`README.md`**). Full override: **`MODULR_CORE_CORS_ORIGINS`**.
+With Core running over **HTTPS** (e.g. `modulr-core --config dev.toml --ssl-keyfile … --ssl-certfile …` on port **8000**; see root **`README.md`** → *Local TLS*), the header loads **`GET /version`** for the live `v…` label. **Methods** wires **`get_protocol_version`**, **`get_protocol_methods`**, **`lookup_module`**, **`get_module_methods`**, route helpers, and related ops to the real **`POST /message`** path (canonical JSON + Ed25519, same rules as the dev playground). Core **`dev_mode`** enables CORS for **`http://` and `https://`** on **`localhost:3000`** and **`127.0.0.1:3000`**. If you use Next’s **Network** URL (LAN IP, e.g. `10.0.0.53:3000`), set **`MODULR_CORE_CORS_EXTRA_ORIGINS`** to that origin (see root **`README.md`**). Full override: **`MODULR_CORE_CORS_ORIGINS`**.
 
 ## Develop
 
@@ -12,7 +12,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Settings persist in `localStorage` under `modulr.customer-ui.settings`.
+**`npm run dev`** uses **`--experimental-https`** and **`--hostname 0.0.0.0`**, so the terminal prints a **Network** URL for other devices on your LAN (HTTPS). Open [https://localhost:3000](https://localhost:3000) locally and accept the certificate prompt once. Default Core URL in Settings is **`https://127.0.0.1:8000`**. Settings persist in `localStorage` under `modulr.customer-ui.settings`.
 
 ### Windows: blank page, `layout.css` 404, Fast Refresh loop
 

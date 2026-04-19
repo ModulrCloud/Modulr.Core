@@ -249,26 +249,28 @@ Use **three terminals**. In each Python terminal, **activate the same venv** fir
 
 | What | Where | One-time setup | Run (typical dev) | URL |
 | ---- | ----- | ---------------- | ------------------- | --- |
-| **Core HTTP server** | Repository root | `pip install -e ".[dev]"` | `modulr-core --reload -v --config dev.toml` | This machine: [http://127.0.0.1:8000](http://127.0.0.1:8000); other PCs: `http://<host-LAN-ip>:8000` — try `GET /version` |
+| **Core** (TLS recommended) | Repository root | `pip install -e ".[dev]"` + TLS PEMs (see **Local TLS** below) | `modulr-core --reload -v --config dev.toml --ssl-keyfile … --ssl-certfile …` | [https://127.0.0.1:8000](https://127.0.0.1:8000) — try `GET /version`; LAN: `https://<host-ip>:8000` |
 | **Keymaster** (signing UI) | `keymaster/` | `cd keymaster` then `pip install -e ".[dev]"` | `modulr-keymaster --reload` | [http://127.0.0.1:8765](http://127.0.0.1:8765) |
-| **Frontend** (customer UI / viewer) | `frontend/` | `cd frontend` then `npm install` | `npm run dev` | [http://localhost:3000](http://localhost:3000) |
+| **Frontend** or **viewer** | `frontend/` or `viewer/` | `npm install` | `npm run dev` | [https://localhost:3000](https://localhost:3000) (self-signed; browser may prompt once) |
 
 If **`modulr-core`** or **`modulr-keymaster`** is not recognized, the venv is inactive or the editable install was done in a different environment — run `pip install -e ".[dev]"` again from **this repo root** (Core) or from **`keymaster/`** (Keymaster). **`--reload`** restarts the server when Python files change (dev only).
 
-#### HTTPS for Core (match a `https://` frontend)
+#### Local TLS (default)
 
-Browsers block **`http://`** API calls from an **`https://`** page (mixed content). To use **HTTPS** for Core in local dev:
+**Why:** Customer UIs run **`npm run dev`** over **HTTPS** so sign-in and API traffic stay on TLS in development. Browsers block **`http://`** APIs from **`https://`** pages (mixed content), so Core should use HTTPS too. Default Core URL in **Settings** is **`https://127.0.0.1:8000`** (existing saved `http://127.0.0.1:8000` entries migrate automatically).
 
-1. Create a **localhost** TLS cert and key (PEM). **[mkcert](https://github.com/FiloSottile/mkcert)** is the usual choice: install the local CA, then e.g. `mkcert localhost 127.0.0.1` to get a cert + key file.
+1. **TLS for Core** — Create a **localhost** cert and key (PEM). **[mkcert](https://github.com/FiloSottile/mkcert)** is typical: install the local CA, then e.g. `mkcert localhost 127.0.0.1`.
 2. Start Core with **`--ssl-keyfile`** and **`--ssl-certfile`** (both required together):
 
 ```powershell
 modulr-core --reload -v --config dev.toml --ssl-keyfile .\localhost+2-key.pem --ssl-certfile .\localhost+2.pem
 ```
 
-3. In the **frontend settings**, set the Core endpoint to **`https://127.0.0.1:8000`** (or whatever host/port you use).
+3. **Optional HTTP-only Core** — Run Core **without** `--ssl-*` and set the Core endpoint in app settings to **`http://127.0.0.1:8000`**. You must then run the web UI over **HTTP** as well (not the default); for Next.js use `next dev --turbo` without `--experimental-https`, and for Vite remove `@vitejs/plugin-basic-ssl` from `viewer/vite.config.ts` or use a plain HTTP profile.
 
-With **`dev_mode = true`**, CORS defaults include **`http://` and `https://`** for `localhost:3000` and `127.0.0.1:3000`. If you open the Next dev UI via a **LAN IP** (e.g. **Network: `http://10.0.0.53:3000`**), the browser **Origin** is that URL and Core will block **`fetch`** until you allow it. Append origins without replacing the defaults:
+**UIs:** Next.js uses **`--experimental-https`**; Vite uses **`@vitejs/plugin-basic-ssl`** (self-signed dev cert).
+
+With **`dev_mode = true`**, CORS defaults include **`http://` and `https://`** for `localhost:3000` and `127.0.0.1:3000`. If you open the dev UI via a **LAN IP** (e.g. **Network: `http://10.0.0.53:3000`**), the browser **Origin** is that URL and Core will block **`fetch`** until you allow it. Append origins without replacing the defaults:
 
 ```powershell
 $env:MODULR_CORE_CORS_EXTRA_ORIGINS="http://10.0.0.53:3000"

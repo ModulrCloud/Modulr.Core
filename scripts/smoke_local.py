@@ -10,7 +10,7 @@ Prerequisites:
 
 Example::
 
-    python scripts/smoke_local.py --base-url http://127.0.0.1:8000
+    python scripts/smoke_local.py --base-url https://127.0.0.1:8000
 
 For a later internal deployment, point ``--base-url`` at that host (still HTTPS
 recommended once TLS terminates in front of the app).
@@ -113,13 +113,13 @@ def main() -> None:
         epilog=(
             "Requires: pip install -e \".[dev]\" and a running modulr-core "
             "(e.g. dev_mode true in TOML). "
-            "Example: python scripts/smoke_local.py --base-url http://127.0.0.1:8000"
+            "Example: python scripts/smoke_local.py --base-url https://127.0.0.1:8000"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "--base-url",
-        default="http://127.0.0.1:8000",
+        default="https://127.0.0.1:8000",
         help="Server origin (no trailing path), default %(default)s",
     )
     p.add_argument(
