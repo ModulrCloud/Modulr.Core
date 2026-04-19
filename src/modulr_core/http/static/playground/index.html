@@ -248,7 +248,7 @@
       <h2>Signing key (Ed25519)</h2>
       <p class="muted">
         Private key hex (32 bytes = 64 hex characters). Used for the envelope signature
-        and, for <code>register_module</code>, optionally as <code>signing_public_key</code>.
+        and, for <code>register_org</code> with a module surface, as <code>signing_public_key</code>.
       </p>
       <textarea id="privHex" rows="3" spellcheck="false" placeholder="Click “Generate new key” or paste 64 hex chars (32 bytes)"></textarea>
       <div class="row">
@@ -262,7 +262,6 @@
       <h2>Request</h2>
       <label>Operation</label>
       <select id="operation">
-        <option value="register_module">register_module</option>
         <option value="lookup_module">lookup_module</option>
         <option value="register_name">register_name</option>
         <option value="register_org">register_org</option>

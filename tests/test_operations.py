@@ -96,6 +96,25 @@ def make_validated_inbound(
     )
 
 
+def _register_org_with_module_payload(
+    organization_name: str,
+    *,
+    route: dict[str, Any],
+    signing_public_key_hex: str,
+    module_version: str | None = None,
+    resolved_id: str = "user:test-binding",
+) -> dict[str, Any]:
+    """register_org payload that also publishes the modules row (legacy register_module)."""
+    payload: dict[str, Any] = {
+        "organization_name": organization_name,
+        "resolved_id": resolved_id,
+        "route": route,
+        "signing_public_key": signing_public_key_hex,
+    }
+    payload["module_version"] = MODULE_VERSION if module_version is None else module_version
+    return payload
+
+
 def test_lookup_builtin_modulr_core_case_insensitive() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
@@ -123,13 +142,12 @@ def test_register_modulr_core_reserved() -> None:
     for name in ("modulr.core", "Modulr.Core"):
         reg = make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": name,
-                "module_version": MODULE_VERSION,
-                "route": {},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                name,
+                route={},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             f"reg-{name}",
         )
         with pytest.raises(WireValidationError) as ei:
@@ -204,10 +222,14 @@ def test_get_organization_logo_not_found_before_genesis() -> None:
 def test_get_organization_logo_rejects_both_identifiers() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    pub = pk.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     req = make_validated_inbound(
         pk,
         "get_organization_logo",
@@ -225,10 +247,14 @@ def test_get_organization_logo_rejects_both_identifiers() -> None:
 def test_get_user_profile_image_rejects_both_identifiers() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    pub = pk.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     req = make_validated_inbound(
         pk,
         "get_user_profile_image",
@@ -240,16 +266,124 @@ def test_get_user_profile_image_rejects_both_identifiers() -> None:
     assert ei.value.code is ErrorCode.PAYLOAD_INVALID
 
 
+def test_get_user_description_rejects_both_identifiers() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    req = make_validated_inbound(
+        pk,
+        "get_user_description",
+        {"user_handle": "alice", "user_signing_public_key_hex": pub},
+        "gud-both",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
+def test_set_get_user_description_roundtrip() -> None:
+    """After set with handle, get by pubkey must resolve the same description."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    bio = "Builder on Modulr — one bio, many apps."
+    req_set = make_validated_inbound(
+        pk,
+        "set_user_description",
+        {
+            "user_signing_public_key_hex": pub,
+            "user_handle": "alice",
+            "description": bio,
+        },
+        "sud-dual",
+    )
+    dispatch_operation(req_set, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    req_get = make_validated_inbound(
+        pk,
+        "get_user_description",
+        {"user_signing_public_key_hex": pub},
+        "gud-by-pk",
+    )
+    out = dispatch_operation(
+        req_get,
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    assert out["code"] == str(SuccessCode.USER_DESCRIPTION_RETURNED)
+    pl = out["payload"]
+    assert pl["description"] == bio
+    assert pl["source"] == "entity"
+
+
+def test_get_user_description_not_found() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    req = make_validated_inbound(
+        pk,
+        "get_user_description",
+        {"user_handle": "nobody"},
+        "gud-nf",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.IDENTITY_NOT_FOUND
+
+
+def test_set_user_description_rejects_overlong() -> None:
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    req = make_validated_inbound(
+        pk,
+        "set_user_description",
+        {
+            "user_signing_public_key_hex": pub,
+            "description": "x" * 2049,
+        },
+        "sud-long",
+    )
+    with pytest.raises(WireValidationError) as ei:
+        dispatch_operation(req, settings=_settings(), conn=conn, clock=lambda: 1.0)
+    assert ei.value.code is ErrorCode.PAYLOAD_INVALID
+
+
 def test_set_user_profile_image_dual_key_allows_get_by_pubkey() -> None:
     """After set with handle, get by pubkey must resolve the same entity row data."""
     pk = Ed25519PrivateKey.generate()
     conn = _conn()
-    pub = pk.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    pub = (
+        pk.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     b64 = (
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg"
+        "=="
     )
     req_set = make_validated_inbound(
         pk,
@@ -285,14 +419,22 @@ def test_set_organization_logo_rejects_org_key_not_bound_to_claimed_pubkey() -> 
     """Non-bootstrap cannot set k:<name> unless name_bindings ties name to org_pk."""
     alice = Ed25519PrivateKey.generate()
     bob = Ed25519PrivateKey.generate()
-    alice_pub = alice.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
-    bob_pub = bob.public_key().public_bytes(
-        encoding=Encoding.Raw,
-        format=PublicFormat.Raw,
-    ).hex()
+    alice_pub = (
+        alice.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
+    bob_pub = (
+        bob.public_key()
+        .public_bytes(
+            encoding=Encoding.Raw,
+            format=PublicFormat.Raw,
+        )
+        .hex()
+    )
     conn = _conn()
     NameBindingsRepository(conn).insert(
         name="myorg",
@@ -407,13 +549,12 @@ def test_get_module_methods_registered_module_empty_manifest() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://s.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://s.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "gmm-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -494,13 +635,12 @@ def test_get_module_route_registered_module() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://s.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://s.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "gmr-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -527,13 +667,12 @@ def test_get_module_route_matches_lookup_after_submit() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://old.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://old.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "gmr-lu-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -634,13 +773,12 @@ def test_lookup_module_case_insensitive_after_register() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "Modulr.Playground",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://p.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "Modulr.Playground",
+            route={"base_url": "https://p.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "m1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -665,18 +803,18 @@ def test_register_and_lookup_module() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://s.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://s.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "m1",
     )
     out1 = dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
     assert out1["status"] == "success"
-    assert out1["code"] == str(SuccessCode.MODULE_REGISTERED)
+    assert out1["code"] == str(SuccessCode.ORG_REGISTERED)
+    assert out1["payload"]["module_registered"] is True
     lu = make_validated_inbound(
         pk,
         "lookup_module",
@@ -699,13 +837,12 @@ def test_submit_module_route_second_submit_replaces_dial_row_not_appends() -> No
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://old.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://old.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "smr2-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -762,13 +899,12 @@ def test_submit_module_route_updates_module_route() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://old.example"},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://old.example"},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "smr-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -811,13 +947,12 @@ def test_submit_module_route_merge_stacks_two_dials() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "sm3-reg",
         ),
         settings=_settings(),
@@ -879,13 +1014,12 @@ def test_submit_module_route_replace_all_after_merge_leaves_one_dial() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "sm4-reg",
         ),
         settings=_settings(),
@@ -1107,13 +1241,12 @@ def test_remove_module_route_registered_module() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "rmr-reg",
         ),
         settings=_settings(),
@@ -1169,13 +1302,12 @@ def test_remove_module_route_dial_not_found() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "rmr2-reg",
         ),
         settings=_settings(),
@@ -1310,13 +1442,12 @@ def test_remove_module_route_identity_mismatch() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "rmr3-reg",
         ),
         settings=_settings(),
@@ -1416,13 +1547,12 @@ def test_submit_module_route_merge_priority_orders_primary() -> None:
     dispatch_operation(
         make_validated_inbound(
             pk,
-            "register_module",
-            {
-                "module_name": "modulr.storage",
-                "module_version": MODULE_VERSION,
-                "route": {"base_url": "https://old.example"},
-                "signing_public_key": sender_pub.hex(),
-            },
+            "register_org",
+            _register_org_with_module_payload(
+                "modulr.storage",
+                route={"base_url": "https://old.example"},
+                signing_public_key_hex=sender_pub.hex(),
+            ),
             "sm7-reg",
         ),
         settings=_settings(),
@@ -1535,13 +1665,12 @@ def test_submit_module_route_identity_mismatch() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {"base_url": "https://old.example"},
-            "signing_public_key": other_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={"base_url": "https://old.example"},
+            signing_public_key_hex=other_pub.hex(),
+        ),
         "smr-id-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1582,13 +1711,12 @@ def test_register_requires_bootstrap_when_configured() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.x",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": mod_key.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.x",
+            route={},
+            signing_public_key_hex=mod_key.hex(),
+        ),
         "m1",
     )
     with pytest.raises(WireValidationError, match="bootstrap"):
@@ -1652,13 +1780,12 @@ def test_heartbeat_after_register() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "m1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1687,13 +1814,12 @@ def test_heartbeat_identity_mismatch() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": other_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=other_pub.hex(),
+        ),
         "m1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1800,13 +1926,12 @@ def test_report_module_state_invalid_phase() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-reg",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1834,13 +1959,12 @@ def test_report_module_state_then_get() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-r1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1895,13 +2019,12 @@ def test_report_module_state_detail_required() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-dr1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1925,13 +2048,12 @@ def test_report_module_state_detail_invalid_validator_pct_sum() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-dv1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -1987,13 +2109,12 @@ def test_report_module_state_rejects_boolean_schema_version() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-bool1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -2024,13 +2145,12 @@ def test_report_module_state_rejects_non_finite_health_point() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-inf1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -2063,13 +2183,12 @@ def test_report_module_state_rejects_negative_jobs_point() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-neg1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -2103,13 +2222,12 @@ def test_report_module_state_rejects_health_point_int_overflow_to_float() -> Non
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-of1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -2142,13 +2260,12 @@ def test_report_module_state_strips_unknown_health_keys_with_warning() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-warn1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)
@@ -2183,13 +2300,12 @@ def test_report_module_state_rejects_schema_version_1_detail() -> None:
     )
     reg = make_validated_inbound(
         pk,
-        "register_module",
-        {
-            "module_name": "modulr.storage",
-            "module_version": MODULE_VERSION,
-            "route": {},
-            "signing_public_key": sender_pub.hex(),
-        },
+        "register_org",
+        _register_org_with_module_payload(
+            "modulr.storage",
+            route={},
+            signing_public_key_hex=sender_pub.hex(),
+        ),
         "rms-v1-1",
     )
     dispatch_operation(reg, settings=_settings(), conn=conn, clock=lambda: 1.0)

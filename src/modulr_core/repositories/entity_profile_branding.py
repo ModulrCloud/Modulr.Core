@@ -1,4 +1,4 @@
-"""Persist per-entity org logos (SVG) and user profile images (raster + MIME)."""
+"""Persist per-entity org logos (SVG), user profile images, and user descriptions."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ class EntityProfileBrandingRepository:
         cur = self._conn.execute(
             """
             SELECT entity_kind, entity_lookup, logo_svg, profile_image,
-                   profile_image_mime, signing_public_key_hex, updated_at
+                   profile_image_mime, signing_public_key_hex, updated_at, description
             FROM entity_profile_branding
             WHERE entity_kind = ? AND entity_lookup = ?
             """,
@@ -44,8 +44,8 @@ class EntityProfileBrandingRepository:
             """
             INSERT INTO entity_profile_branding (
                 entity_kind, entity_lookup, logo_svg, profile_image,
-                profile_image_mime, signing_public_key_hex, updated_at
-            ) VALUES ('org', ?, ?, NULL, NULL, ?, ?)
+                profile_image_mime, signing_public_key_hex, updated_at, description
+            ) VALUES ('org', ?, ?, NULL, NULL, ?, ?, NULL)
             ON CONFLICT(entity_kind, entity_lookup) DO UPDATE SET
                 logo_svg = excluded.logo_svg,
                 signing_public_key_hex = excluded.signing_public_key_hex,
@@ -67,8 +67,8 @@ class EntityProfileBrandingRepository:
             """
             INSERT INTO entity_profile_branding (
                 entity_kind, entity_lookup, logo_svg, profile_image,
-                profile_image_mime, signing_public_key_hex, updated_at
-            ) VALUES ('user', ?, NULL, ?, ?, ?, ?)
+                profile_image_mime, signing_public_key_hex, updated_at, description
+            ) VALUES ('user', ?, NULL, ?, ?, ?, ?, NULL)
             ON CONFLICT(entity_kind, entity_lookup) DO UPDATE SET
                 profile_image = excluded.profile_image,
                 profile_image_mime = excluded.profile_image_mime,
@@ -82,4 +82,27 @@ class EntityProfileBrandingRepository:
                 signing_public_key_hex,
                 updated_at,
             ),
+        )
+
+    def upsert_user_description(
+        self,
+        *,
+        entity_lookup: str,
+        description: str | None,
+        signing_public_key_hex: str,
+        updated_at: int,
+    ) -> None:
+        """Set or clear ``description`` for a user row; preserves image columns on conflict."""
+        self._conn.execute(
+            """
+            INSERT INTO entity_profile_branding (
+                entity_kind, entity_lookup, logo_svg, profile_image,
+                profile_image_mime, signing_public_key_hex, updated_at, description
+            ) VALUES ('user', ?, NULL, NULL, NULL, ?, ?, ?)
+            ON CONFLICT(entity_kind, entity_lookup) DO UPDATE SET
+                description = excluded.description,
+                signing_public_key_hex = excluded.signing_public_key_hex,
+                updated_at = excluded.updated_at
+            """,
+            (entity_lookup, signing_public_key_hex, updated_at, description),
         )

@@ -1,0 +1,108 @@
+import { Link } from "react-router-dom";
+
+import { ExploreNetworkModules } from "@/components/home/ExploreNetworkModules";
+import { RecommendedNextShell } from "@/components/home/RecommendedNextShell";
+import { GlassPanel } from "@/components/shell/GlassPanel";
+
+/**
+ * Public landing — dashboard-style layout aligned with Modulr.Code: primary column + Explore rail.
+ */
+export function WelcomeHome() {
+  return (
+    <div className="mx-auto w-full max-w-[1520px] pb-16">
+      <div className="flex flex-col gap-10 lg:grid lg:grid-cols-[minmax(0,1fr)_min(440px,42vw)] lg:items-stretch lg:gap-10 xl:gap-12">
+        <div className="flex min-w-0 flex-col gap-8">
+          <section className="text-center sm:text-left">
+            <p className="font-modulr-display text-xs font-bold uppercase tracking-widest text-[var(--modulr-accent)]">
+              Welcome
+            </p>
+            <h1 className="font-modulr-display mt-3 text-3xl font-bold tracking-tight text-[var(--modulr-text)] sm:text-4xl md:text-[2.75rem] md:leading-[1.1]">
+              Welcome to the network hub.
+            </h1>
+            <p className="modulr-text-muted mx-auto mt-4 max-w-2xl text-base leading-relaxed sm:mx-0 sm:text-lg">
+              <span className="font-medium text-[var(--modulr-text)]">Modulr.Core</span> is the
+              coordination layer for the Modulr network — discovery, identity, and signed operations
+              so modules and people can find each other.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+              <span className="inline-flex rounded-full border border-[var(--modulr-glass-border)] bg-[color-mix(in_srgb,var(--modulr-page-bg)_50%,transparent)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--modulr-text-muted)]">
+                Core shell · preview
+              </span>
+            </div>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <button
+                type="button"
+                disabled
+                title="Sign-in flows coming soon"
+                className="inline-flex min-h-[48px] cursor-not-allowed items-center justify-center rounded-2xl bg-[var(--modulr-accent)] px-8 text-sm font-bold text-[var(--modulr-accent-contrast)] opacity-85 shadow-[0_8px_28px_rgba(255,183,0,0.25)] transition-opacity"
+              >
+                Sign in
+              </button>
+              <Link
+                to="/registration"
+                className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border-2 border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-panel-fill)] px-8 text-sm font-bold text-[var(--modulr-text)] shadow-[inset_0_1px_0_var(--modulr-glass-highlight)] transition-colors hover:border-[var(--modulr-accent)]/40 hover:text-[var(--modulr-accent)]"
+              >
+                Create a profile
+              </Link>
+            </div>
+          </section>
+
+          <GlassPanel className="p-6 sm:p-8 md:p-10">
+            <h2 className="font-modulr-display text-lg font-bold text-[var(--modulr-text)]">
+              Sign in
+            </h2>
+            <p className="modulr-text-muted mt-2 max-w-2xl text-sm leading-relaxed">
+              Choose how you want to use the shell. Keys stay on-device for wallet paths; Google and
+              Apple use industry-standard OAuth when we connect them.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                disabled
+                className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/25 px-5 py-3 text-left text-sm font-semibold text-[var(--modulr-text)] opacity-80 transition-colors disabled:cursor-not-allowed sm:min-w-[200px]"
+                title="Coming soon — connect a wallet or Keymaster session"
+              >
+                <span className="block text-[var(--modulr-accent)]">Wallet</span>
+                <span className="modulr-text-muted mt-1 block text-xs font-normal">
+                  Sign with your keys (Keymaster / browser wallet)
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled
+                className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/25 px-5 py-3 text-left text-sm font-semibold text-[var(--modulr-text)] opacity-80 transition-colors disabled:cursor-not-allowed sm:min-w-[200px]"
+                title="Coming soon — Google account linking"
+              >
+                <span className="block text-[var(--modulr-accent)]">Google</span>
+                <span className="modulr-text-muted mt-1 block text-xs font-normal">
+                  Continue with Google (SSO)
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled
+                className="rounded-xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/25 px-5 py-3 text-left text-sm font-semibold text-[var(--modulr-text)] opacity-80 transition-colors disabled:cursor-not-allowed sm:min-w-[200px]"
+                title="Coming soon — Sign in with Apple"
+              >
+                <span className="block text-[var(--modulr-accent)]">Apple</span>
+                <span className="modulr-text-muted mt-1 block text-xs font-normal">
+                  Continue with Apple (SSO)
+                </span>
+              </button>
+            </div>
+            <p className="modulr-text-muted mt-4 text-xs leading-relaxed">
+              Until sign-in is live, use the header for Profile, Registration, Resolve, Inspector, and
+              Methods — settings (gear) holds Core URLs and theme.
+            </p>
+          </GlassPanel>
+
+          <RecommendedNextShell />
+        </div>
+
+        <aside className="w-full lg:sticky lg:top-[5.5rem] lg:self-start">
+          <ExploreNetworkModules />
+        </aside>
+      </div>
+    </div>
+  );
+}

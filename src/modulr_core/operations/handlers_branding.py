@@ -35,6 +35,7 @@ _OPERATOR_PROFILE_IMAGE_MAX_BYTES = 256 * 1024
 _ALLOWED_PROFILE_IMAGE_MIMES = frozenset(
     {"image/png", "image/jpeg", "image/webp", "image/gif"},
 )
+_USER_DESCRIPTION_MAX_CHARS = 2048
 
 
 def _require_ed25519_pk(p: dict[str, Any], field: str) -> str:
@@ -315,6 +316,65 @@ def _genesis_user_profile_snapshot(
     }
 
 
+def _validate_user_description_wire(raw: str | None) -> str | None:
+    """Return stripped description or ``None`` to clear; enforce max length."""
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise WireValidationError(
+            "payload.description must be a string or null",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    s = raw.strip()
+    if not s:
+        return None
+    if len(s) > _USER_DESCRIPTION_MAX_CHARS:
+        mx = _USER_DESCRIPTION_MAX_CHARS
+        raise WireValidationError(
+            f"description must be at most {mx} characters after trim",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    return s
+
+
+def _resolve_user_description(
+    conn: sqlite3.Connection,
+    *,
+    handle_norm: str | None,
+    pk_hex: str | None,
+) -> dict[str, Any]:
+    """Load public user description from ``entity_profile_branding`` only (no genesis bio)."""
+    repo = EntityProfileBrandingRepository(conn)
+    if handle_norm is not None:
+        row = repo.get(entity_kind="user", entity_lookup=_user_lookup_h(handle_norm))
+        if row is not None:
+            d = row.get("description")
+            desc = str(d) if d is not None else None
+            return {
+                "user_handle": handle_norm,
+                "user_signing_public_key_hex": row.get("signing_public_key_hex"),
+                "description": desc,
+                "source": "entity",
+            }
+    if pk_hex is not None:
+        npk = normalize_ed25519_public_key_hex(pk_hex)
+        row = repo.get(entity_kind="user", entity_lookup=_user_lookup_p(npk))
+        if row is not None:
+            d = row.get("description")
+            desc = str(d) if d is not None else None
+            return {
+                "user_handle": None,
+                "user_signing_public_key_hex": npk,
+                "description": desc,
+                "source": "entity",
+            }
+
+    raise WireValidationError(
+        "no user description found for the given identifier",
+        code=ErrorCode.IDENTITY_NOT_FOUND,
+    )
+
+
 def _resolve_user_profile(
     conn: sqlite3.Connection,
     *,
@@ -453,6 +513,41 @@ def handle_get_user_profile_image(
     )
 
 
+def handle_get_user_description(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    del settings
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    has_h = bool(str(p.get("user_handle", "")).strip())
+    has_pk = bool(str(p.get("user_signing_public_key_hex", "")).strip())
+    if has_h == has_pk:
+        raise WireValidationError(
+            "provide exactly one of user_handle or user_signing_public_key_hex",
+            code=ErrorCode.PAYLOAD_INVALID,
+        )
+    handle_norm: str | None = None
+    pk: str | None = None
+    if has_h:
+        handle_norm = _normalize_user_handle_wire(require_str_branding(p, "user_handle"))
+    else:
+        pk = _require_ed25519_pk(p, "user_signing_public_key_hex")
+
+    body = _resolve_user_description(conn, handle_norm=handle_norm, pk_hex=pk)
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="get_user_description_response",
+        success_code=SuccessCode.USER_DESCRIPTION_RETURNED,
+        detail="User description (public bio).",
+        payload=body,
+        clock=clock,
+    )
+
+
 def _is_genesis_root_org(
     conn: sqlite3.Connection,
     *,
@@ -555,6 +650,63 @@ def handle_set_organization_logo(
         operation_response="set_organization_logo_response",
         success_code=SuccessCode.ORGANIZATION_LOGO_UPDATED,
         detail="Organization logo updated.",
+        payload=out,
+        clock=clock,
+    )
+
+
+def handle_set_user_description(
+    validated: ValidatedInbound,
+    *,
+    settings: Settings,
+    conn: sqlite3.Connection,
+    clock: EpochClock,
+) -> dict[str, Any]:
+    env = validated.envelope
+    p: dict[str, Any] = env["payload"]
+    user_pk = _require_ed25519_pk(p, "user_signing_public_key_hex")
+    desc = _validate_user_description_wire(p.get("description"))
+    opt_handle = optional_str(p, "user_handle")
+    handle_norm: str | None = None
+    if opt_handle is not None and opt_handle.strip():
+        handle_norm = _normalize_user_handle_wire(opt_handle)
+
+    sender = env["sender_public_key"]
+    if normalize_ed25519_public_key_hex(sender) != normalize_ed25519_public_key_hex(
+        user_pk,
+    ) and not sender_is_effective_bootstrap(sender, settings=settings, conn=conn):
+        raise WireValidationError(
+            "sender must match user_signing_public_key_hex or be bootstrap",
+            code=ErrorCode.UNAUTHORIZED,
+        )
+
+    now = int(clock())
+    repo = EntityProfileBrandingRepository(conn)
+    npk = normalize_ed25519_public_key_hex(user_pk)
+    repo.upsert_user_description(
+        entity_lookup=_user_lookup_p(user_pk),
+        description=desc,
+        signing_public_key_hex=npk,
+        updated_at=now,
+    )
+    if handle_norm is not None:
+        repo.upsert_user_description(
+            entity_lookup=_user_lookup_h(handle_norm),
+            description=desc,
+            signing_public_key_hex=npk,
+            updated_at=now,
+        )
+
+    out: dict[str, Any] = {
+        "user_handle": handle_norm,
+        "user_signing_public_key_hex": npk,
+        "description": desc,
+    }
+    return success_response_envelope(
+        request_message_id=env["message_id"],
+        operation_response="set_user_description_response",
+        success_code=SuccessCode.USER_DESCRIPTION_UPDATED,
+        detail="User description updated.",
         payload=out,
         clock=clock,
     )

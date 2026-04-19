@@ -312,7 +312,9 @@ A **config file is required**: use **`--config dev.toml`** or set **`MODULR_CORE
 
 ### Customer web UI (stage 1)
 
-A **Next.js** app in **`frontend/`** is the customer-facing shell (theme blend, glass layout, firefly/gradient backgrounds, settings for Modulr.Core URLs). It is kept beside Core for convenience and is expected to move to its own repository later.
+A **Next.js** app in **`frontend/`** is the original customer-facing shell (theme blend, glass layout, firefly/gradient backgrounds, settings for Modulr.Core URLs). It is kept beside Core for convenience and is expected to move to its own repository later.
+
+A **Vite + React** copy lives in **`viewer/`** — same routes and components, **no Next.js** — intended for simpler local dev, parity with other Vite-based Modulr apps, and **static hosting** (e.g. AWS Amplify). The Next app remains a known-good reference until you standardize on one.
 
 ```bash
 cd frontend
@@ -320,11 +322,21 @@ npm install
 npm run dev
 ```
 
-Details: **`frontend/README.md`**. Phased product plan: **`plan/customer_web_interface.md`**.
+```bash
+cd viewer
+npm install
+npm run dev
+```
+
+Details: **`frontend/README.md`**, **`viewer/README.md`**. Phased product plan: **`plan/customer_web_interface.md`**.
 
 ### Planned: module branding (tracking)
 
 Module publishers should be able to register a **logo** (or icon) for their module so explorers and the customer shell can show it next to the module name. **Format policy is not fixed yet** — **SVG** is a strong default (scales cleanly at any size); allowing PNG/WebP with size limits is an alternative. This will need a wire contract, validation, and storage or URL policy on Core or the module registry when implemented.
+
+### Planned: Modulr ID — `get_modulr_id` (tracking)
+
+Optional **identity / trust** layer: a protocol-category wire read (**`get_modulr_id`**) to resolve an opaque **Modulr ID** and related trust signals (e.g. centralized onboarding, tier) for use alongside org/name identity. **Issuance / mutation stays private** — only trusted operators (e.g. module owners, bootstrap/service keys), not arbitrary callers setting their own IDs on the open wire. Details: payload shape, storage, and whether attestations are minimal hashes vs richer records TBD when implemented.
 
 ---
 

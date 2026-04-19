@@ -163,7 +163,8 @@ def test_post_message_replay_returns_identical_success_json() -> None:
         format=PublicFormat.Raw,
     )
     reg_payload = {
-        "module_name": "modulr.storage",
+        "organization_name": "modulr.storage",
+        "resolved_id": "user:test-binding",
         "module_version": MODULE_VERSION,
         "route": {"base_url": "https://replay.example"},
         "signing_public_key": pub.hex(),
@@ -171,7 +172,7 @@ def test_post_message_replay_returns_identical_success_json() -> None:
     body = _signed_body(
         private_key=pk,
         message_id="replay-same",
-        operation="register_module",
+        operation="register_org",
         payload=reg_payload,
     )
     app = create_app(
@@ -194,7 +195,8 @@ def test_post_message_replay_without_cache_returns_409() -> None:
         format=PublicFormat.Raw,
     )
     reg_payload = {
-        "module_name": "modulr.cachemiss",
+        "organization_name": "modulr.cachemiss",
+        "resolved_id": "user:test-binding",
         "module_version": MODULE_VERSION,
         "route": {},
         "signing_public_key": pub.hex(),
@@ -202,7 +204,7 @@ def test_post_message_replay_without_cache_returns_409() -> None:
     body = _signed_body(
         private_key=pk,
         message_id="cache-miss",
-        operation="register_module",
+        operation="register_org",
         payload=reg_payload,
     )
     conn = _conn()
@@ -262,7 +264,8 @@ dev_mode = false
         format=PublicFormat.Raw,
     )
     reg_payload = {
-        "module_name": "modulr.storage",
+        "organization_name": "modulr.storage",
+        "resolved_id": "user:test-binding",
         "module_version": MODULE_VERSION,
         "route": {"base_url": "https://example.invalid"},
         "signing_public_key": mod_k.hex(),
@@ -270,7 +273,7 @@ dev_mode = false
     body_reg = _signed_body(
         private_key=pk,
         message_id="file-reg",
-        operation="register_module",
+        operation="register_org",
         payload=reg_payload,
     )
     body_lu = _signed_body(
@@ -281,7 +284,7 @@ dev_mode = false
     with TestClient(app) as client:
         r1 = client.post("/message", content=body_reg)
         assert r1.status_code == 200
-        assert r1.json()["code"] == str(SuccessCode.MODULE_REGISTERED)
+        assert r1.json()["code"] == str(SuccessCode.ORG_REGISTERED)
         r2 = client.post("/message", content=body_lu)
         assert r2.status_code == 200
         assert r2.json()["code"] == str(SuccessCode.MODULE_FOUND)
@@ -464,9 +467,10 @@ def test_post_message_submit_module_route() -> None:
     register_body = _signed_body(
         private_key=pk,
         message_id="smr-http-reg",
-        operation="register_module",
+        operation="register_org",
         payload={
-            "module_name": "modulr.storage",
+            "organization_name": "modulr.storage",
+            "resolved_id": "user:test-binding",
             "module_version": MODULE_VERSION,
             "route": {"base_url": "https://old.example"},
             "signing_public_key": pub.hex(),

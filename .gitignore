@@ -15,8 +15,8 @@ dist/
 build/
 *.egg
 
-# Local SQLite (modulr-core default database_path)
-data/
+# Local SQLite (modulr-core default database_path) — repo root only
+/data/
 
 # Keymaster — local vault (encrypted blobs still belong only on disk; keeps clones clean)
 keymaster_data/
@@ -28,6 +28,9 @@ keymaster/keymaster_data/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Node (frontend / viewer)
+node_modules/
 
 # Editors / OS
 .idea/
