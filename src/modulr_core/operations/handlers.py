@@ -1457,15 +1457,42 @@ def handle_register_org(
 
     repo = NameBindingsRepository(conn)
     now = int(clock())
-    created_at, is_new = _insert_name_binding_idempotent(
-        repo,
-        name=name,
-        resolved_id=resolved_id,
-        route_json=route_json,
-        metadata_json=meta_json,
-        now=now,
-        conflict_message="organization_name is already bound to different data",
-    )
+    existing_org = repo.get_by_name(name)
+    if existing_org is not None:
+        if _binding_row_matches(
+            existing_org,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=meta_json,
+        ):
+            created_at = existing_org["created_at"]
+            is_new = False
+        elif wants_module and existing_org["resolved_id"] == resolved_id:
+            # Org exists (e.g. route/metadata from an earlier register_org without a module
+            # row); allow upgrading to module publisher by refreshing the binding row.
+            repo.update_route_metadata(
+                name=name,
+                resolved_id=resolved_id,
+                route_json=route_json,
+                metadata_json=meta_json,
+            )
+            created_at = existing_org["created_at"]
+            is_new = False
+        else:
+            raise WireValidationError(
+                "organization_name is already bound to different data",
+                code=ErrorCode.NAME_ALREADY_BOUND,
+            )
+    else:
+        created_at, is_new = _insert_name_binding_idempotent(
+            repo,
+            name=name,
+            resolved_id=resolved_id,
+            route_json=route_json,
+            metadata_json=meta_json,
+            now=now,
+            conflict_message="organization_name is already bound to different data",
+        )
 
     module_registered = False
     if wants_module:

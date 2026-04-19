@@ -44,6 +44,29 @@ class NameBindingsRepository:
         )
         return cur.rowcount > 0
 
+    def update_route_metadata(
+        self,
+        *,
+        name: str,
+        resolved_id: str,
+        route_json: str | None,
+        metadata_json: str | None,
+    ) -> bool:
+        """Replace ``route_json`` and ``metadata_json`` when ``name`` and ``resolved_id`` match.
+
+        Used when an org binding already exists and ``register_org`` publishes or refreshes
+        module surface data (same org identity, new route/metadata).
+        """
+        cur = self._conn.execute(
+            """
+            UPDATE name_bindings
+            SET route_json = ?, metadata_json = ?
+            WHERE name = ? AND resolved_id = ?
+            """,
+            (route_json, metadata_json, name, resolved_id),
+        )
+        return cur.rowcount > 0
+
     def list_by_resolved_id(self, resolved_id: str) -> list[dict[str, Any]]:
         cur = self._conn.execute(
             """
