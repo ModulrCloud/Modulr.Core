@@ -2439,6 +2439,61 @@ def test_register_org_and_reverse_lists_both() -> None:
     assert names == {"acme.network", "bob@acme.network"}
 
 
+def test_register_org_module_publish_after_plain_org_binding() -> None:
+    """Org registered without a module row can later publish via register_org (same resolved_id)."""
+    pk = Ed25519PrivateKey.generate()
+    conn = _conn()
+    sender_pub = pk.public_key().public_bytes(
+        encoding=Encoding.Raw,
+        format=PublicFormat.Raw,
+    )
+    resolved_id = "org:upgradable"
+    org_name = "publishlater.network"
+
+    out_plain = dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_org",
+            {
+                "organization_name": org_name,
+                "resolved_id": resolved_id,
+                "metadata": {"note": "pre-module"},
+            },
+            "org-plain",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 1.0,
+    )
+    assert out_plain["code"] == str(SuccessCode.ORG_REGISTERED)
+    assert out_plain["payload"]["module_registered"] is False
+
+    out_module = dispatch_operation(
+        make_validated_inbound(
+            pk,
+            "register_org",
+            _register_org_with_module_payload(
+                org_name,
+                route={"module": True},
+                signing_public_key_hex=sender_pub.hex(),
+                resolved_id=resolved_id,
+            ),
+            "org-module",
+        ),
+        settings=_settings(),
+        conn=conn,
+        clock=lambda: 2.0,
+    )
+    assert out_module["code"] == str(SuccessCode.ORG_REGISTERED)
+    assert out_module["payload"]["module_registered"] is True
+
+    row = NameBindingsRepository(conn).get_by_name(org_name)
+    assert row is not None
+    assert row["route_json"] is not None
+    assert row["metadata_json"] is not None
+    assert json.loads(row["metadata_json"]) == {"note": "pre-module"}
+
+
 def test_reverse_resolve_identity_not_found() -> None:
     pk = Ed25519PrivateKey.generate()
     conn = _conn()

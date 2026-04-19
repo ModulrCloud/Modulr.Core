@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
-    "dev": "next dev --turbo",
-    "dev:webpack": "next dev",
-    "dev:clean": "npm run clean && next dev --turbo",
+    "dev": "next dev --turbo --experimental-https --hostname 0.0.0.0",
+    "dev:webpack": "next dev --experimental-https --hostname 0.0.0.0",
+    "dev:clean": "npm run clean && next dev --turbo --experimental-https --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

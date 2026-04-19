@@ -73,7 +73,7 @@ export function SettingsPanel({
   function addEndpoint() {
     setSettings((s) => ({
       ...s,
-      coreEndpoints: [...s.coreEndpoints, "http://127.0.0.1:8000"],
+      coreEndpoints: [...s.coreEndpoints, "https://127.0.0.1:8000"],
     }));
   }
 
@@ -260,7 +260,7 @@ export function SettingsPanel({
                 <p className="mb-3 text-xs text-[var(--modulr-text-muted)]">
                   The first URL is used for connectivity checks. Local dev often uses{" "}
                   <code className="rounded bg-[var(--modulr-page-bg-2)] px-1">
-                    http://127.0.0.1:8000
+                    https://127.0.0.1:8000
                   </code>
                   .
                 </p>

@@ -10,7 +10,10 @@ Prerequisites:
 
 Example::
 
-    python scripts/smoke_local.py --base-url http://127.0.0.1:8000
+    python scripts/smoke_local.py --base-url https://127.0.0.1:8000
+
+If the server uses a dev/self-signed TLS certificate, verification fails by
+default; pass ``--insecure`` to skip certificate checks (local use only).
 
 For a later internal deployment, point ``--base-url`` at that host (still HTTPS
 recommended once TLS terminates in front of the app).
@@ -113,13 +116,14 @@ def main() -> None:
         epilog=(
             "Requires: pip install -e \".[dev]\" and a running modulr-core "
             "(e.g. dev_mode true in TOML). "
-            "Example: python scripts/smoke_local.py --base-url http://127.0.0.1:8000"
+            "Example: python scripts/smoke_local.py --base-url https://127.0.0.1:8000 "
+            "[--insecure if using a dev TLS cert]"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
         "--base-url",
-        default="http://127.0.0.1:8000",
+        default="https://127.0.0.1:8000",
         help="Server origin (no trailing path), default %(default)s",
     )
     p.add_argument(
@@ -143,6 +147,14 @@ def main() -> None:
         "--skip-heartbeat",
         action="store_true",
         help="Only register, replay, and lookup (skip heartbeat_update)",
+    )
+    p.add_argument(
+        "--insecure",
+        action="store_true",
+        help=(
+            "Disable TLS certificate verification (use with https:// and dev "
+            "self-signed certs only)"
+        ),
     )
     args = p.parse_args()
 
@@ -169,7 +181,7 @@ def main() -> None:
         expiry_window_s=args.expiry_window,
     )
 
-    with httpx.Client(timeout=args.timeout) as client:
+    with httpx.Client(timeout=args.timeout, verify=not args.insecure) as client:
         try:
             print(
                 f"POST {url}  register_org  {module_name!r}  message_id={reg_mid}",

@@ -133,7 +133,7 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
             "Core (not genesis metadata). Returns null description if the profile "
             "row exists but no bio was set."
         ),
-        payload_contract="user_profile_image_get",
+        payload_contract="user_description_get",
         protocol_surface=True,
     ),
     _e(
@@ -176,7 +176,7 @@ _CORE_WIRE_METHOD_ENTRIES: tuple[WireMethodCatalogEntry, ...] = (
             "to mirror the row under h:<handle> as well as p:<pubkey>. Sender must "
             "match the user key or be bootstrap—same as set_user_profile_image."
         ),
-        payload_contract="user_profile_image_set",
+        payload_contract="user_description_set",
         protocol_surface=True,
     ),
     _e(
