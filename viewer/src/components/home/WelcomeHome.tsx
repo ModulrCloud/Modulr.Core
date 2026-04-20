@@ -1,11 +1,17 @@
 "use client";
 
-import { Link } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import { ExploreNetworkModules } from "@/components/home/ExploreNetworkModules";
 import { RecommendedNextShell } from "@/components/home/RecommendedNextShell";
 import { GlassPanel } from "@/components/shell/GlassPanel";
 import { useShellSignedIn } from "@/hooks/useShellSignedIn";
+import {
+  isShellSignInLocationHash,
+  routeToShellSignInSection,
+  SHELL_SIGN_IN_SECTION_ID,
+} from "@/lib/shellDeepLinks";
 import { setMockShellAuthKind, setShellSignedIn } from "@/lib/mockShellIdentity";
 
 /**
@@ -18,6 +24,18 @@ function connectDemoWalletSession() {
 
 export function WelcomeHome() {
   const shellSignedIn = useShellSignedIn();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    if (!isShellSignInLocationHash(location.hash)) return;
+    const el = document.getElementById(SHELL_SIGN_IN_SECTION_ID);
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [location.pathname, location.hash]);
 
   return (
     <div className="mx-auto w-full max-w-[1520px] pb-16">
@@ -49,7 +67,7 @@ export function WelcomeHome() {
                 {shellSignedIn ? "Connected (demo)" : "Sign in (demo)"}
               </button>
               <Link
-                to={shellSignedIn ? "/profile" : "/#shell-sign-in"}
+                to={shellSignedIn ? "/profile" : routeToShellSignInSection}
                 className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border-2 border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-panel-fill)] px-8 text-sm font-bold text-[var(--modulr-text)] shadow-[inset_0_1px_0_var(--modulr-glass-highlight)] transition-colors hover:border-[var(--modulr-accent)]/40 hover:text-[var(--modulr-accent)]"
               >
                 Create a profile
@@ -64,7 +82,7 @@ export function WelcomeHome() {
             ) : null}
           </section>
 
-          <section id="shell-sign-in" className="scroll-mt-24">
+          <section id={SHELL_SIGN_IN_SECTION_ID} className="scroll-mt-24">
             <GlassPanel className="p-6 sm:p-8 md:p-10">
             <h2 className="font-modulr-display text-lg font-bold text-[var(--modulr-text)]">
               Sign in

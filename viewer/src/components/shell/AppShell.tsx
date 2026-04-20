@@ -1,7 +1,7 @@
 "use client";
 
-import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import { AnimatedBackground } from "@/components/background/AnimatedBackground";
 import { IconBell, IconGear } from "@/components/icons";
@@ -11,6 +11,7 @@ import { useCoreVersion } from "@/hooks/useCoreVersion";
 import { useGenesisBranding } from "@/hooks/useGenesisBranding";
 import { useShellSignedIn } from "@/hooks/useShellSignedIn";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
+import { routeToShellSignInSection } from "@/lib/shellDeepLinks";
 
 import { NotificationsPanel } from "./NotificationsPanel";
 import { GenesisNoticeModal } from "./GenesisNoticeModal";
@@ -142,7 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </>
                 ) : (
                   <Link
-                    to="/#shell-sign-in"
+                    to={routeToShellSignInSection}
                     aria-current={pathname === "/" ? "page" : undefined}
                     className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
                       pathname === "/" ? "text-[var(--modulr-accent)]" : ""

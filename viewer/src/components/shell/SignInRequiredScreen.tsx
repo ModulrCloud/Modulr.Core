@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { GlassPanel } from "@/components/shell/GlassPanel";
+import { routeToShellSignInSection } from "@/lib/shellDeepLinks";
 import { setMockShellAuthKind, setShellSignedIn } from "@/lib/mockShellIdentity";
 
 type SignInRequiredScreenProps = {
@@ -27,7 +28,7 @@ export function SignInRequiredScreen({
         <p className="modulr-text-muted mt-4 text-sm leading-relaxed">{description}</p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <Link
-            to="/#shell-sign-in"
+            to={routeToShellSignInSection}
             className="inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-[var(--modulr-accent)] px-8 text-sm font-bold text-[var(--modulr-accent-contrast)] shadow-[0_8px_28px_rgba(255,183,0,0.25)] transition-opacity hover:opacity-95"
           >
             Go to sign-in
