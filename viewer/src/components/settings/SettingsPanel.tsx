@@ -30,7 +30,7 @@ const BACKGROUND_PRESET_OPTIONS: ModulrSelectOption[] = [
 const SETTINGS_TABS = [
   { id: "general" as const, label: "General" },
   { id: "profile" as const, label: "Profile" },
-  { id: "registration" as const, label: "Registration" },
+  { id: "organizations" as const, label: "Organizations" },
   { id: "resolve" as const, label: "Resolve" },
   { id: "methods" as const, label: "Methods" },
 ];
@@ -136,9 +136,10 @@ export function SettingsPanel({
       <button
         type="button"
         tabIndex={settingsOpen ? 0 : -1}
-        className={`absolute inset-0 cursor-default bg-black/45 backdrop-blur-md transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+        className={`absolute inset-0 cursor-default backdrop-blur-md transition-opacity duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
           settingsOpen ? "opacity-100" : "opacity-0"
         }`}
+        style={{ backgroundColor: "var(--modulr-settings-scrim, rgba(0,0,0,0.45))" }}
         aria-label="Close settings"
         onClick={() => setSettingsOpen(false)}
       />
@@ -147,12 +148,14 @@ export function SettingsPanel({
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
         inert={!settingsOpen}
-        className={`modulr-glass-surface relative flex h-[70vh] max-h-[calc(100vh-2rem)] w-[60vw] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--modulr-glass-border)] bg-[var(--modulr-glass-fill)] shadow-2xl transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          settingsOpen ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
-        }`}
+        className={`relative flex h-[70vh] max-h-[calc(100vh-2rem)] w-[60vw] max-w-[calc(100vw-2rem)] shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--modulr-glass-border)] shadow-2xl transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          settings.colorMode === "light"
+            ? "backdrop-blur-[10px]"
+            : "modulr-glass-surface"
+        } ${settingsOpen ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
         style={{
-          boxShadow:
-            "0 24px 80px rgba(0,0,0,0.35), inset 0 1px 0 var(--modulr-glass-highlight)",
+          backgroundColor: "var(--modulr-settings-dialog-bg, var(--modulr-glass-fill))",
+          boxShadow: "var(--modulr-settings-dialog-shadow, 0 24px 80px rgba(0,0,0,0.35))",
         }}
       >
         <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--modulr-glass-border)] px-5 py-4 sm:px-6">
@@ -410,20 +413,20 @@ export function SettingsPanel({
             </div>
           ) : null}
 
-          {tab === "registration" ? (
+          {tab === "organizations" ? (
             <div className="space-y-4">
               <p className="text-sm text-[var(--modulr-text-muted)]">
-                Settings for the <strong className="text-[var(--modulr-text)]">Registration</strong>{" "}
-                flow — names, orgs, and pricing previews. App-specific options will land here (e.g.
-                default tiers, mock anchors) as we wire the shell to Core.
+                Settings for the <strong className="text-[var(--modulr-text)]">Organizations</strong>{" "}
+                app — org registration defaults, invite policy, and treasury hints. Scoped to this
+                shell until Core exposes org preferences.
               </p>
               <div className="rounded-xl border border-dashed border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/15 px-4 py-6 text-center">
                 <p className="text-sm font-medium text-[var(--modulr-text)]">
-                  No registration-specific toggles yet
+                  No organization-specific toggles yet
                 </p>
                 <p className="modulr-text-muted mt-2 text-xs leading-relaxed">
-                  When registration gains configurable defaults, they will appear in this tab so you
-                  can tune the experience without touching Core policy.
+                  When org management gains configurable defaults, they will appear here so you can
+                  tune the experience without touching Core policy.
                 </p>
               </div>
             </div>

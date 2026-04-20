@@ -35,12 +35,12 @@ export const SHELL_RECOMMENDED_NEXT: ShellRecommendedItem[] = [
     href: "/profile",
   },
   {
-    id: "registration",
-    name: "Registration",
-    category: "Onboarding",
+    id: "organizations",
+    name: "Organizations",
+    category: "Governance",
     description:
-      "Walk through registration flows against Core (mock paths) so you can validate UX before production.",
-    href: "/registration",
+      "Register a namespace and explore mock controls for members, invites, treasury limits, and app access.",
+    href: "/organizations",
   },
   {
     id: "resolve",
