@@ -9,6 +9,7 @@ import { useAppUi } from "@/components/providers/AppProviders";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { useCoreVersion } from "@/hooks/useCoreVersion";
 import { useGenesisBranding } from "@/hooks/useGenesisBranding";
+import { useShellSignedIn } from "@/hooks/useShellSignedIn";
 import { primaryCoreBaseUrl } from "@/lib/coreBaseUrl";
 
 import { NotificationsPanel } from "./NotificationsPanel";
@@ -18,6 +19,7 @@ import { ThemeModeSwitch } from "./ThemeModeSwitch";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { settings, setSettingsOpen, notificationsOpen, setNotificationsOpen } = useAppUi();
+  const shellSignedIn = useShellSignedIn();
   const { pathname } = useLocation();
   const { coreVersion, refetchCoreVersion } = useCoreVersion();
   const coreBase = primaryCoreBaseUrl(settings.coreEndpoints);
@@ -117,26 +119,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-x-10 gap-y-2 border-t border-[var(--modulr-glass-chrome-border)] pt-3 text-sm font-semibold tracking-tight text-[var(--modulr-text)] sm:border-t-0 sm:pt-0"
                 aria-label="Core tools"
               >
-                <Link
-                  to="/profile"
-                  aria-current={pathname === "/profile" ? "page" : undefined}
-                  className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
-                    pathname === "/profile" ? "text-[var(--modulr-accent)]" : ""
-                  }`}
-                >
-                  Profile
-                </Link>
-                <Link
-                  to="/registration"
-                  aria-current={pathname === "/registration" ? "page" : undefined}
-                  className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
-                    pathname === "/registration"
-                      ? "text-[var(--modulr-accent)]"
-                      : ""
-                  }`}
-                >
-                  Registration
-                </Link>
+                {shellSignedIn ? (
+                  <>
+                    <Link
+                      to="/profile"
+                      aria-current={pathname === "/profile" ? "page" : undefined}
+                      className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
+                        pathname === "/profile" ? "text-[var(--modulr-accent)]" : ""
+                      }`}
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      to="/organizations"
+                      aria-current={pathname === "/organizations" ? "page" : undefined}
+                      className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
+                        pathname === "/organizations" ? "text-[var(--modulr-accent)]" : ""
+                      }`}
+                    >
+                      Organizations
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    to="/#shell-sign-in"
+                    aria-current={pathname === "/" ? "page" : undefined}
+                    className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
+                      pathname === "/" ? "text-[var(--modulr-accent)]" : ""
+                    }`}
+                  >
+                    Sign in
+                  </Link>
+                )}
                 <Link
                   to="/resolve"
                   aria-current={pathname === "/resolve" ? "page" : undefined}

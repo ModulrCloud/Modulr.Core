@@ -67,4 +67,49 @@ export function applyColorModeToDocument(colorMode: "dark" | "light"): void {
   root.style.setProperty("--modulr-glass-sat", dark ? "1.35" : "1.55");
   root.style.setProperty("--modulr-theme-dark", dark ? "1" : "0");
   root.style.colorScheme = dark ? "dark" : "light";
+
+  /** Settings modal: light mode needs a brighter surface; dark keeps frosted glass. */
+  root.style.setProperty(
+    "--modulr-settings-scrim",
+    dark ? "rgba(0, 0, 0, 0.45)" : "rgba(71, 85, 105, 0.22)",
+  );
+  root.style.setProperty(
+    "--modulr-settings-dialog-bg",
+    dark ? "rgba(22, 25, 36, 0.5)" : "rgba(255, 255, 255, 0.98)",
+  );
+  root.style.setProperty(
+    "--modulr-settings-dialog-shadow",
+    dark
+      ? "0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 var(--modulr-glass-highlight)"
+      : "0 14px 44px rgba(15, 23, 42, 0.1), 0 2px 10px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.95)",
+  );
+
+  /**
+   * Registration availability strips — use app theme (not Tailwind `dark:`, which can
+   * follow OS and fight the in-app light/dark toggle).
+   */
+  root.style.setProperty(
+    "--modulr-status-success-fg",
+    dark ? "rgba(209, 250, 229, 0.98)" : "#064e3b",
+  );
+  root.style.setProperty(
+    "--modulr-status-success-bg",
+    dark ? "rgba(6, 78, 59, 0.35)" : "rgba(167, 243, 208, 0.72)",
+  );
+  root.style.setProperty(
+    "--modulr-status-success-border",
+    dark ? "rgba(52, 211, 153, 0.42)" : "rgba(4, 120, 87, 0.5)",
+  );
+  root.style.setProperty(
+    "--modulr-status-warn-fg",
+    dark ? "rgba(254, 243, 199, 0.98)" : "#78350f",
+  );
+  root.style.setProperty(
+    "--modulr-status-warn-bg",
+    dark ? "rgba(120, 53, 15, 0.32)" : "rgba(254, 243, 199, 0.85)",
+  );
+  root.style.setProperty(
+    "--modulr-status-warn-border",
+    dark ? "rgba(251, 191, 36, 0.45)" : "rgba(180, 83, 9, 0.5)",
+  );
 }
