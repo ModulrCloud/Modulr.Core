@@ -11,6 +11,13 @@ export type NetworkModule = {
   href: string | null;
 };
 
+/** Keep the rail scannable — additional modules go on the next “page” in `ExploreNetworkModules`. */
+export const EXPLORE_MODULES_PAGE_SIZE = 6;
+
+/**
+ * Ordered catalog (Omni / multiple form factors; not only desktop).
+ * Page 1 leans creative + identity; page 2 adds platform, economy, AI, and gaming.
+ */
 export const NETWORK_MODULES: NetworkModule[] = [
   {
     id: "code",
@@ -18,6 +25,14 @@ export const NETWORK_MODULES: NetworkModule[] = [
     category: "Creative suite",
     description:
       "Authoring, scripts, and sync across your workspace — structure and delivery for builders.",
+    href: null,
+  },
+  {
+    id: "office",
+    name: "Modulr.Office",
+    category: "Productivity",
+    description:
+      "Docs, slides, and spreadsheets tied to live databases — manage data with familiar UI instead of raw tables alone.",
     href: null,
   },
   {
@@ -53,11 +68,35 @@ export const NETWORK_MODULES: NetworkModule[] = [
     href: "/products/modulr-storage",
   },
   {
-    id: "desktop",
-    name: "Modulr.Desktop",
-    category: "Workspace",
+    id: "os",
+    name: "Modulr.OS",
+    category: "Omni interface",
     description:
-      "Desktop shell, featured modules, and session-aware layouts for focused work.",
-    href: "/products/modulr-desktop",
+      "Shell experience across desktop, mobile, TV, wearables — the Modulr Omni front end; Linux distribution planned.",
+    href: "/products/modulr-os",
+  },
+  {
+    id: "ads",
+    name: "Modulr.Ads",
+    category: "Network economy",
+    description:
+      "Optional ads and sponsored tasks so using the network doesn’t always mean paying out of pocket — modules can reward attention and micro-tasks.",
+    href: null,
+  },
+  {
+    id: "ai",
+    name: "Modulr.AI",
+    category: "Intelligence",
+    description:
+      "Central AI — major providers plus hosted models; share idle GPU with the network and earn for useful compute.",
+    href: null,
+  },
+  {
+    id: "gaming",
+    name: "Modulr.Gaming",
+    category: "Experiences",
+    description:
+      "Decentralized game-server capacity — studios set rates; capacity appears as players show up, without owning all the metal.",
+    href: null,
   },
 ];

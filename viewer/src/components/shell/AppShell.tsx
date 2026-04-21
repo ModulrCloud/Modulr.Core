@@ -171,7 +171,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Inspector
                 </Link>
                 <Link
+                  to="/publish"
+                  aria-current={pathname === "/publish" ? "page" : undefined}
+                  className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
+                    pathname === "/publish" ? "text-[var(--modulr-accent)]" : ""
+                  }`}
+                >
+                  Publish
+                </Link>
+                <Link
                   to="/methods"
+                  title="Wire method catalog — development and QA; not a typical end-user screen."
                   aria-current={pathname === "/methods" ? "page" : undefined}
                   className={`transition-colors duration-200 hover:text-[var(--modulr-accent)] ${
                     pathname === "/methods" ? "text-[var(--modulr-accent)]" : ""
