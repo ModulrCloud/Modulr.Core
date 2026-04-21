@@ -236,7 +236,7 @@ export function InspectorMock() {
               {
                 title: "Featured modules",
                 date: "Soon",
-                body: "Curated picks and Add to Modulr.Desktop from this operator view.",
+                body: "Curated picks and Add to Modulr.OS from this operator view.",
               },
               {
                 title: "Dashboard API milestone",
@@ -268,7 +268,7 @@ export function InspectorMock() {
             Featured modules
           </h2>
           <p className="modulr-text-muted mt-2 max-w-3xl text-sm leading-relaxed">
-            Flagship Modulr products surfaced on the desktop.{" "}
+            Flagship Modulr products surfaced for the Omni shell.{" "}
             <span className="font-medium text-[var(--modulr-text)]">Launch</span> will open
             the experience when wired;{" "}
             <span className="font-medium text-[var(--modulr-text)]">Learn more</span> goes
@@ -287,9 +287,9 @@ export function InspectorMock() {
                 href: "/products/modulr-storage",
               },
               {
-                name: "Modulr.Desktop",
-                desc: "Your workspace shell — run featured modules, shortcuts, and session-aware layouts.",
-                href: "/products/modulr-desktop",
+                name: "Modulr.OS",
+                desc: "Omni interface — featured modules and session-aware layouts across desktop, mobile, TV, wearables, and more.",
+                href: "/products/modulr-os",
               },
             ].map((m) => (
               <li

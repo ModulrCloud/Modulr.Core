@@ -1,8 +1,12 @@
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { GlassPanel } from "@/components/shell/GlassPanel";
 import type { NetworkModule } from "@/data/networkModules";
-import { NETWORK_MODULES } from "@/data/networkModules";
+import {
+  EXPLORE_MODULES_PAGE_SIZE,
+  NETWORK_MODULES,
+} from "@/data/networkModules";
 
 const barBase =
   "block w-full rounded-xl border text-left transition-[border-color,box-shadow,background-color] duration-200";
@@ -70,6 +74,14 @@ export function ExploreNetworkModules({
   modules?: NetworkModule[];
   className?: string;
 }) {
+  const pageCount = Math.max(1, Math.ceil(modules.length / EXPLORE_MODULES_PAGE_SIZE));
+  const [page, setPage] = useState(0);
+
+  const slice = useMemo(() => {
+    const start = page * EXPLORE_MODULES_PAGE_SIZE;
+    return modules.slice(start, start + EXPLORE_MODULES_PAGE_SIZE);
+  }, [modules, page]);
+
   return (
     <GlassPanel className={`flex flex-col overflow-hidden p-1 sm:p-1.5 ${className}`}>
       <div className="shrink-0 border-b border-[var(--modulr-glass-border)] px-3 py-3 sm:px-4 sm:py-3.5">
@@ -77,14 +89,40 @@ export function ExploreNetworkModules({
           Explore the network
         </p>
         <p className="modulr-text-muted mt-1.5 text-[13px] leading-snug">
-          Same Modulr graph — different surfaces. More modules land here over time.
+          Same Modulr graph — different surfaces. Swipe through pages so the rail stays
+          light; full ecosystem grows over time.
         </p>
+        {pageCount > 1 ? (
+          <p className="modulr-text-muted mt-1 text-[11px] font-medium uppercase tracking-wide">
+            Page {page + 1} of {pageCount}
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-col gap-2 px-2 py-2.5 sm:px-2.5 sm:py-3">
-        {modules.map((mod) => (
+        {slice.map((mod) => (
           <ModuleBar key={mod.id} mod={mod} />
         ))}
       </div>
+      {pageCount > 1 ? (
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--modulr-glass-border)] px-2 py-2 sm:px-2.5">
+          <button
+            type="button"
+            disabled={page <= 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            className="min-h-[40px] flex-1 rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/30 px-2 text-xs font-semibold text-[var(--modulr-text-muted)] transition-colors hover:border-[var(--modulr-accent)]/35 hover:text-[var(--modulr-text)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ← Previous
+          </button>
+          <button
+            type="button"
+            disabled={page >= pageCount - 1}
+            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+            className="min-h-[40px] flex-1 rounded-lg border border-[var(--modulr-glass-border)] bg-[var(--modulr-page-bg)]/30 px-2 text-xs font-semibold text-[var(--modulr-text-muted)] transition-colors hover:border-[var(--modulr-accent)]/35 hover:text-[var(--modulr-text)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next →
+          </button>
+        </div>
+      ) : null}
     </GlassPanel>
   );
 }

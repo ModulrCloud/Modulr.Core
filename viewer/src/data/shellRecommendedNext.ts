@@ -9,6 +9,7 @@ export type ShellRecommendedItem = {
   href: string;
 };
 
+/** Methods is listed last — wire catalog is primarily for development / QA. */
 export const SHELL_RECOMMENDED_NEXT: ShellRecommendedItem[] = [
   {
     id: "inspector",
@@ -17,14 +18,6 @@ export const SHELL_RECOMMENDED_NEXT: ShellRecommendedItem[] = [
     description:
       "Module health, wire metrics, and mock charts — the operator view for how this Core instance looks from the outside.",
     href: "/inspector",
-  },
-  {
-    id: "methods",
-    name: "Methods",
-    category: "Protocol",
-    description:
-      "Browse POST /message methods, request shapes, and catalog entries wired to the Core you have configured in settings.",
-    href: "/methods",
   },
   {
     id: "profile",
@@ -49,5 +42,21 @@ export const SHELL_RECOMMENDED_NEXT: ShellRecommendedItem[] = [
     description:
       "Try name resolution end-to-end with your endpoints — see how answers come back from this shell’s Core.",
     href: "/resolve",
+  },
+  {
+    id: "publish",
+    name: "Publish",
+    category: "Developers",
+    description:
+      "List a module — Modulr calendar version, ratings, pricing & trials, Markdown ToS, certification / MTR, multi-role packages, icon.",
+    href: "/publish",
+  },
+  {
+    id: "methods",
+    name: "Methods",
+    category: "Protocol · dev",
+    description:
+      "POST /message catalog against your Core — debugging and contract checks for builders; most users never need this screen.",
+    href: "/methods",
   },
 ];
