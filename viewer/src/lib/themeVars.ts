@@ -112,4 +112,83 @@ export function applyColorModeToDocument(colorMode: "dark" | "light"): void {
     "--modulr-status-warn-border",
     dark ? "rgba(251, 191, 36, 0.45)" : "rgba(180, 83, 9, 0.5)",
   );
+  root.style.setProperty(
+    "--modulr-status-info-fg",
+    dark ? "rgba(191, 219, 254, 0.98)" : "#1e3a8a",
+  );
+  root.style.setProperty(
+    "--modulr-status-info-bg",
+    dark ? "rgba(30, 58, 138, 0.32)" : "rgba(219, 234, 254, 0.88)",
+  );
+  root.style.setProperty(
+    "--modulr-status-info-border",
+    dark ? "rgba(96, 165, 250, 0.42)" : "rgba(29, 78, 216, 0.45)",
+  );
+  root.style.setProperty(
+    "--modulr-status-error-fg",
+    dark ? "rgba(254, 202, 202, 0.98)" : "#991b1b",
+  );
+  root.style.setProperty(
+    "--modulr-status-error-bg",
+    dark ? "rgba(127, 29, 29, 0.36)" : "rgba(254, 226, 226, 0.92)",
+  );
+  root.style.setProperty(
+    "--modulr-status-error-border",
+    dark ? "rgba(252, 165, 165, 0.45)" : "rgba(185, 28, 28, 0.5)",
+  );
+
+  /**
+   * Toast shells: blend status tint into the same frosted glass as panels so errors
+   * stay legible without losing glassmorphism.
+   */
+  root.style.setProperty("--modulr-toast-neutral-surface", glassPanelFill);
+  root.style.setProperty("--modulr-toast-neutral-border", glassBorder);
+  root.style.setProperty(
+    "--modulr-toast-error-surface",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-panel-fill) 44%, rgba(248, 113, 113, 0.26))"
+      : "color-mix(in srgb, var(--modulr-glass-panel-fill) 32%, rgba(254, 202, 202, 0.58))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-error-border",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-border) 48%, rgba(252, 165, 165, 0.48))"
+      : "color-mix(in srgb, var(--modulr-glass-border) 38%, rgba(220, 38, 38, 0.36))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-warning-surface",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-panel-fill) 44%, rgba(251, 191, 36, 0.22))"
+      : "color-mix(in srgb, var(--modulr-glass-panel-fill) 32%, rgba(254, 243, 199, 0.55))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-warning-border",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-border) 50%, rgba(251, 191, 36, 0.42))"
+      : "color-mix(in srgb, var(--modulr-glass-border) 40%, rgba(180, 83, 9, 0.34))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-success-surface",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-panel-fill) 46%, rgba(52, 211, 153, 0.2))"
+      : "color-mix(in srgb, var(--modulr-glass-panel-fill) 34%, rgba(167, 243, 208, 0.52))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-success-border",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-border) 52%, rgba(52, 211, 153, 0.38))"
+      : "color-mix(in srgb, var(--modulr-glass-border) 42%, rgba(4, 120, 87, 0.32))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-info-surface",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-panel-fill) 46%, rgba(96, 165, 250, 0.22))"
+      : "color-mix(in srgb, var(--modulr-glass-panel-fill) 34%, rgba(191, 219, 254, 0.52))",
+  );
+  root.style.setProperty(
+    "--modulr-toast-info-border",
+    dark
+      ? "color-mix(in srgb, var(--modulr-glass-border) 52%, rgba(96, 165, 250, 0.4))"
+      : "color-mix(in srgb, var(--modulr-glass-border) 42%, rgba(29, 78, 216, 0.32))",
+  );
 }

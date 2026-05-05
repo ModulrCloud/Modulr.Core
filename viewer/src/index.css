@@ -171,6 +171,19 @@ body {
     backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease);
 }
 
+/** Floating toasts — same panel blur/saturation as cards; fill/border come from level tokens. */
+.modulr-toast {
+  -webkit-backdrop-filter: blur(var(--modulr-glass-panel-blur)) saturate(var(--modulr-glass-sat));
+  backdrop-filter: blur(var(--modulr-glass-panel-blur)) saturate(var(--modulr-glass-sat));
+  transition:
+    background-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    border-color var(--modulr-theme-duration) var(--modulr-theme-ease),
+    box-shadow var(--modulr-theme-duration) var(--modulr-theme-ease),
+    color var(--modulr-text-color-duration) var(--modulr-theme-ease),
+    -webkit-backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease),
+    backdrop-filter var(--modulr-theme-duration) var(--modulr-theme-ease);
+}
+
 ::selection {
   background: color-mix(in srgb, var(--modulr-accent) 35%, transparent);
 }
